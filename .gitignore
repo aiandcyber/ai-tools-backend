@@ -1,0 +1,38 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Jobs / uploads (runtime)
+/tmp/
+*.log
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# MCP generated local config (regenerated at runtime)
+mcp_servers/mcp.json
+
+# Test / coverage
+.coverage
+htmlcov/
+dist/
+build/

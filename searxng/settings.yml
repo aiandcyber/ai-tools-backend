@@ -1,0 +1,67 @@
+# Recommended SearXNG settings (shared service — not part of the API container).
+#
+# Deploy SearXNG separately (Docker/ECS). Mount or copy this file to the
+# SearXNG config path, then point AI Tools at it with SEARXNG_URL.
+#
+# Docs: https://docs.searxng.org/admin/settings/
+
+use_default_settings: true
+
+server:
+  # Replace with a unique secret in each environment
+  secret_key: "CHANGE_ME_TO_A_LONG_RANDOM_SECRET"
+  image_proxy: true
+  limiter: false
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: en
+  formats:
+    - html
+    - json
+
+outgoing:
+  request_timeout: 8.0
+  max_request_timeout: 15.0
+
+engines:
+  - name: wikipedia
+    disabled: false
+    weight: 1.2
+  - name: wikidata
+    disabled: false
+    weight: 1.1
+  - name: bing
+    disabled: false
+    weight: 1.3
+  - name: bing news
+    disabled: false
+  - name: mojeek
+    disabled: false
+  - name: mojeek news
+    disabled: false
+  - name: qwant
+    disabled: false
+  - name: qwant news
+    disabled: false
+  - name: yahoo
+    disabled: false
+  - name: reddit
+    disabled: false
+  - name: hackernews
+    disabled: false
+  - name: github
+    disabled: false
+  - name: google scholar
+    disabled: false
+  - name: mastodon users
+    disabled: false
+  - name: duckduckgo
+    disabled: false
+  - name: brave
+    disabled: false
+  - name: google
+    disabled: false
+  - name: startpage
+    disabled: false

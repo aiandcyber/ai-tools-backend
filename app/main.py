@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import shutil
 import uuid
 from pathlib import Path
@@ -7,10 +9,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from app import config
-from app.agent import CHAT_DOWNLOADS, CHAT_FILES, build_orchestrator
-from app.auth import check_auth
+from app.agent import CHAT_DOWNLOADS, CHAT_FILES, build_orchestrator, resolve_llm_provider
+from app.auth import check_auth, tool_requires_auth
 from app.catalog import CATEGORIES, TOOLS
-from app.runner import run_tool
+from app.runner import export_text, run_tool
 from app.workspace import publish, resolve_download
 
 app = FastAPI(title="AI-for All Tools")
@@ -23,21 +25,36 @@ app.add_middleware(
 )
 
 _orchestrator = None
+_orchestrator_provider: str | None = None
 
 
-def _agent():
-    global _orchestrator
-    if _orchestrator is None:
-        _orchestrator = build_orchestrator()
+def _has_llm_key() -> bool:
+    return bool(config.OPENROUTER_API_KEY or config.GEMINI_API_KEY)
+
+
+def _agent(provider: str | None = None):
+    global _orchestrator, _orchestrator_provider
+    wanted = resolve_llm_provider(provider)
+    if _orchestrator is None or _orchestrator_provider != wanted:
+        _orchestrator = build_orchestrator(wanted)
+        _orchestrator_provider = wanted
     return _orchestrator
 
 
 @app.get("/api/health")
 def health() -> dict:
+    provider = None
+    try:
+        provider = resolve_llm_provider()
+    except Exception:
+        provider = None
     return {
         "status": "ok",
         "auth_required": config.AUTH_REQUIRED,
+        "auth0_configured": bool(config.AUTH0_DOMAIN and config.AUTH0_AUDIENCE),
         "openrouter": bool(config.OPENROUTER_API_KEY),
+        "gemini": bool(config.GEMINI_API_KEY),
+        "llm_provider": provider,
         "ffmpeg": bool(shutil.which("ffmpeg")),
         "libreoffice": bool(shutil.which("soffice") or shutil.which("libreoffice")),
         "tesseract": bool(shutil.which("tesseract")),
@@ -68,13 +85,21 @@ def list_tools() -> dict:
 
 
 @app.post("/api/tools/{tool_id}")
-async def execute_tool(tool_id: str, request: Request, _: None = Depends(check_auth)):
+async def execute_tool(tool_id: str, request: Request):
     options, saved = await _read_form(request)
+    if tool_requires_auth(tool_id, options):
+        check_auth(request)
     try:
-        outcome = run_tool(tool_id, saved, options)
+        outcome = await asyncio.to_thread(run_tool, tool_id, saved, options)
     except KeyError:
         raise HTTPException(status_code=404, detail="Unknown tool") from None
     except Exception as exc:
+        if tool_id == "tts":
+            logging.getLogger("uvicorn.error").exception(
+                "tts tool failed chars=%s lang=%s",
+                len(str(options.get("text") or "")),
+                options.get("language"),
+            )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
         "message": outcome.message,
@@ -84,8 +109,23 @@ async def execute_tool(tool_id: str, request: Request, _: None = Depends(check_a
     }
 
 
+@app.post("/api/export-text")
+async def export_text_api(request: Request):
+    options, _saved = await _read_form(request)
+    text = str(options.get("text") or "")
+    fmt = str(options.get("format") or "txt")
+    try:
+        outcome = export_text(text, fmt)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "message": outcome.message,
+        "downloads": [publish(item) for item in outcome.files],
+    }
+
+
 @app.post("/api/search")
-async def search_api(request: Request, _: None = Depends(check_auth)):
+async def search_api(request: Request):
     """JSON search API for Tools UI and realtime-ai (news / recommendations / requests)."""
     try:
         body = await request.json()
@@ -128,24 +168,88 @@ def search_regions() -> dict:
 
 @app.post("/api/chat")
 async def chat(request: Request, _: None = Depends(check_auth)):
-    if not config.OPENROUTER_API_KEY:
-        raise HTTPException(status_code=503, detail="Set OPENROUTER_API_KEY to use the assistant")
+    if not _has_llm_key():
+        raise HTTPException(
+            status_code=503,
+            detail="Set OPENROUTER_API_KEY or GEMINI_API_KEY to use the assistant",
+        )
     options, saved = await _read_form(request)
     message = str(options.get("message", ""))
     language = str(options.get("language", "en"))
     file_token = CHAT_FILES.set(saved)
     download_token = CHAT_DOWNLOADS.set([])
+    provider_used = None
+    result = None
     try:
         names = ", ".join(path.name for path in saved) or "none"
         prompt = f"User language code: {language}.\nAttached files: {names}.\n\n{message}"
-        result = _agent()(prompt)
+
+        def _run(provider: str):
+            return _agent(provider)(prompt)
+
+        try:
+            provider_used = resolve_llm_provider()
+            # Strands agent is sync; run off the event loop so one chat can't freeze the API
+            result = await asyncio.to_thread(_run, provider_used)
+        except Exception as primary_exc:
+            can_fallback = (
+                config.LLM_FALLBACK_GEMINI
+                and config.GEMINI_API_KEY
+                and provider_used != "gemini"
+            )
+            if not can_fallback:
+                raise
+            provider_used = "gemini"
+            result = await asyncio.to_thread(_run, "gemini")
+            _ = primary_exc
         downloads = list(CHAT_DOWNLOADS.get())
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     finally:
         CHAT_FILES.reset(file_token)
         CHAT_DOWNLOADS.reset(download_token)
-    return {"reply": str(result), "downloads": downloads}
+    return {"reply": str(result), "downloads": downloads, "llm_provider": provider_used}
+
+
+@app.post("/api/youtube/probe")
+async def youtube_probe(request: Request):
+    options, _saved = await _read_form(request)
+    url = str(options.get("url") or "").strip()
+    kind = str(options.get("kind") or "mp4").strip().lower()
+    if kind not in ("mp4", "mp3"):
+        kind = "mp4"
+    from app.tools import media as media_tool
+
+    try:
+        payload = await asyncio.to_thread(media_tool.youtube_probe, url, kind)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Could not read video info: {exc}") from exc
+    return payload
+
+
+@app.post("/api/tts")
+async def tts(request: Request):
+    """Speak agent replies with edge-tts (neural voices). Returns audio/mpeg."""
+    options, _saved = await _read_form(request)
+    text = str(options.get("text") or "").strip()
+    language = str(options.get("language") or "en").strip() or "en"
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+    # Keep replies snappy for speak-aloud
+    if len(text) > 4000:
+        text = text[:4000] + "…"
+    from app.tools import media as media_tool
+
+    work = config.JOB_ROOT / "tts" / uuid.uuid4().hex
+    work.mkdir(parents=True, exist_ok=True)
+    dest = work / "speech.mp3"
+    try:
+        await media_tool.text_to_speech_async(text, language, dest)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"TTS failed: {exc}") from exc
+    return FileResponse(dest, media_type="audio/mpeg", filename="speech.mp3")
 
 
 @app.get("/api/files/{token}/{name}")

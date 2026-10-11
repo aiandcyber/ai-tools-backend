@@ -77,25 +77,41 @@ def merge_xlsx(files: list[Path], dest: Path) -> Path:
     return dest
 
 
-def fill_template(src: Path, dest: Path, values: dict) -> Path:
-    document = Document(str(src))
-    for paragraph in document.paragraphs:
-        _replace_runs(paragraph, values)
-    for table in document.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                for paragraph in cell.paragraphs:
-                    _replace_runs(paragraph, values)
-    document.save(dest)
+def merge_docx(files: list[Path], dest: Path) -> Path:
+    """Append DOCX bodies in upload order into one document."""
+    from copy import deepcopy
+
+    if len(files) < 2:
+        raise ValueError("Upload at least two Word files")
+    combined = Document(str(files[0]))
+    body = combined.element.body
+    for path in files[1:]:
+        combined.add_page_break()
+        source = Document(str(path))
+        for child in list(source.element.body):
+            # Keep one sectPr on the combined document
+            if child.tag.endswith("sectPr"):
+                continue
+            body.append(deepcopy(child))
+    combined.save(dest)
     return dest
 
 
-def _replace_runs(paragraph, values: dict) -> None:
-    text = paragraph.text
-    updated = text
-    for key, value in values.items():
-        updated = updated.replace("{{" + key + "}}", str(value))
-    if updated != text and paragraph.runs:
-        paragraph.runs[0].text = updated
-        for run in paragraph.runs[1:]:
-            run.text = ""
+def merge_pptx(files: list[Path], dest: Path) -> Path:
+    """Append slides from each presentation into one PPTX (best-effort shape copy)."""
+    from copy import deepcopy
+
+    if len(files) < 2:
+        raise ValueError("Upload at least two PowerPoint files")
+    merged = Presentation(str(files[0]))
+    for path in files[1:]:
+        source = Presentation(str(path))
+        for slide in source.slides:
+            layout = merged.slide_layouts[min(6, len(merged.slide_layouts) - 1)]
+            new_slide = merged.slides.add_slide(layout)
+            for shape in list(new_slide.shapes):
+                shape.element.getparent().remove(shape.element)
+            for shape in slide.shapes:
+                new_slide.shapes._spTree.insert_element_before(deepcopy(shape.element), "p:extLst")
+    merged.save(dest)
+    return dest

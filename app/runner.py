@@ -48,7 +48,7 @@ def _pdf_merge(files, options, work):
 
 
 def _pdf_compress(files, options, work):
-    dest = pdf.compress_pdf(_one(files), work / "compressed.pdf", int(_opt(options, "quality", "60") or "60"))
+    dest = pdf.compress_pdf(_one(files), work / "compressed.pdf")
     return Outcome("Compressed PDF", [dest])
 
 
@@ -165,9 +165,16 @@ def _xlsx_merge(files, options, work):
     return Outcome("Merged workbooks", [office.merge_xlsx(files, work / "merged.xlsx")])
 
 
-def _fill(files, options, work):
-    values = loads_json(_opt(options, "values", "{}"))
-    return Outcome("Filled template", [office.fill_template(_one(files), work / "filled.docx", values)])
+def _docx_merge(files, options, work):
+    if len(files) < 2:
+        raise ValueError("Upload at least two Word files")
+    return Outcome("Merged Word documents", [office.merge_docx(files, work / "merged.docx")])
+
+
+def _pptx_merge(files, options, work):
+    if len(files) < 2:
+        raise ValueError("Upload at least two PowerPoint files")
+    return Outcome("Merged presentations", [office.merge_pptx(files, work / "merged.pptx")])
 
 
 def _image_compress(files, options, work):
@@ -216,6 +223,16 @@ def _palette(files, options, work):
     return Outcome("Extracted palette", [dest])
 
 
+def _youtube_mp4(files, options, work):
+    dest = media.download_youtube_mp4(_opt(options, "url"), work, _opt(options, "quality", "720"))
+    return Outcome("Downloaded YouTube video", [dest])
+
+
+def _youtube_mp3(files, options, work):
+    dest = media.download_youtube_mp3(_opt(options, "url"), work, _opt(options, "quality", "192"))
+    return Outcome("Downloaded YouTube audio", [dest])
+
+
 def _media_convert(files, options, work):
     fmt = _opt(options, "format", "mp3")
     return Outcome("Converted media", [media.convert_media(_one(files), work / f"converted.{fmt}")])
@@ -237,7 +254,19 @@ def _extract_audio(files, options, work):
 
 
 def _tts(files, options, work):
-    return Outcome("Created speech", [media.text_to_speech(_opt(options, "text"), _opt(options, "language", "en"), work / "speech.mp3")])
+    text = _opt(options, "text")
+    language = _opt(options, "language", "en") or "en"
+    lang = language.strip().lower()
+    if lang.startswith("zh"):
+        lang = "zh"
+    detected = media._detect_tts_lang(text, "en")
+    spoken = text
+    if detected != lang:
+        spoken = ai.translate(text, lang, "auto")
+        message = f"Translated to {ai.LANG.get(lang, lang)} and created speech"
+    else:
+        message = "Created speech"
+    return Outcome(message, [media.text_to_speech(spoken, lang, work / "speech.mp3")])
 
 
 def _stt(files, options, work):
@@ -356,22 +385,47 @@ def _text_file(message: str, work: Path, name: str) -> Outcome:
 
 
 def _summarize(files, options, work):
-    return _text_file(ai.summarize(ai.source_text(files, _opt(options, "text"))), work, "summary.md")
+    text = ai.summarize(ai.source_text(files, _opt(options, "text")))
+    dest = work / "summary.md"
+    dest.write_text(text, encoding="utf-8")
+    return Outcome(text, [dest])
 
 
 def _translate(files, options, work):
-    text = ai.translate(ai.source_text(files, _opt(options, "text")), _opt(options, "language", "en"))
-    return _text_file(text, work, "translation.md")
+    text = ai.translate(
+        ai.source_text(files, _opt(options, "text")),
+        _opt(options, "language", "en"),
+        _opt(options, "source_language", "auto"),
+    )
+    dest = work / "translation.md"
+    dest.write_text(text, encoding="utf-8")
+    return Outcome(text, [dest])
 
 
 def _rewrite(files, options, work):
     text = ai.rewrite(ai.source_text(files, _opt(options, "text")), _opt(options, "instruction"))
-    return _text_file(text, work, "rewrite.md")
+    dest = work / "rewrite.md"
+    dest.write_text(text, encoding="utf-8")
+    return Outcome(text, [dest])
 
 
 def _generate(files, options, work):
     fmt = _opt(options, "format", "docx")
-    body = ai.draft(_opt(options, "request"), fmt)
+    request = _opt(options, "request")
+    preset = _opt(options, "template_preset")
+    template_hint = ""
+    if preset:
+        template_hint = f"Well-known template style: {preset}."
+    if files:
+        try:
+            uploaded = ai.source_text(files, "")
+            if uploaded.strip():
+                template_hint = (
+                    f"{template_hint}\nUploaded template / sample structure:\n{uploaded}"
+                ).strip()
+        except Exception:
+            pass
+    body = ai.draft(request, fmt, template_hint=template_hint)
     if fmt == "pdf":
         return _pdf_create([], {"title": "Document", "body": body}, work)
     if fmt == "pptx":
@@ -383,6 +437,34 @@ def _generate(files, options, work):
         doc.add_paragraph(paragraph)
     doc.save(document)
     return Outcome("Created document", [document])
+
+
+def export_text(text: str, fmt: str, work: Path | None = None) -> Outcome:
+    """Export already-generated text to a downloadable format."""
+    content = (text or "").strip()
+    if not content:
+        raise ValueError("Nothing to export")
+    fmt = (fmt or "txt").strip().lower()
+    root = work or Path(tempfile.mkdtemp(prefix="aitool-export-"))
+    if fmt in {"txt", "text"}:
+        dest = root / "export.txt"
+        dest.write_text(content, encoding="utf-8")
+        return Outcome("Exported text", [dest])
+    if fmt in {"md", "markdown"}:
+        dest = root / "export.md"
+        dest.write_text(content, encoding="utf-8")
+        return Outcome("Exported Markdown", [dest])
+    if fmt == "pdf":
+        return _pdf_create([], {"title": "Export", "body": content}, root)
+    if fmt == "docx":
+        document = root / "export.docx"
+        from docx import Document
+        doc = Document()
+        for paragraph in content.split("\n"):
+            doc.add_paragraph(paragraph)
+        doc.save(document)
+        return Outcome("Exported Word document", [document])
+    raise ValueError("Unsupported export format")
 
 
 def _classify(files, options, work):
@@ -413,7 +495,8 @@ _DISPATCH = {
     "xlsx_to_csv": _xlsx_csv,
     "pptx_create": _pptx,
     "xlsx_merge": _xlsx_merge,
-    "fill_template": _fill,
+    "docx_merge": _docx_merge,
+    "pptx_merge": _pptx_merge,
     "image_compress": _image_compress,
     "image_transform": _image_transform,
     "image_convert": _image_convert,
@@ -422,6 +505,8 @@ _DISPATCH = {
     "image_remove_bg": _bg,
     "favicon": _favicon,
     "palette": _palette,
+    "youtube_mp4": _youtube_mp4,
+    "youtube_mp3": _youtube_mp3,
     "media_convert": _media_convert,
     "media_trim": _media_trim,
     "media_compress": _media_compress,

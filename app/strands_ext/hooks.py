@@ -48,6 +48,10 @@ class ToolsAuditHook(HookProvider):
         tool_use = event.tool_use or {}
         name = tool_use.get("name") if isinstance(tool_use, dict) else getattr(tool_use, "name", "")
         status = None
-        if event.tool_result and isinstance(event.tool_result, dict):
-            status = event.tool_result.get("status")
-        audit.record("after_tool", agent=self.label, tool=name, status=status, cancelled=bool(event.cancel_message))
+        result = getattr(event, "result", None)
+        if result is not None and isinstance(result, dict):
+            status = result.get("status")
+        elif result is not None:
+            status = getattr(result, "status", None) or str(type(result).__name__)
+        cancelled = bool(getattr(event, "cancel_message", None))
+        audit.record("after_tool", agent=self.label, tool=name, status=status, cancelled=cancelled)

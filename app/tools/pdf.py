@@ -17,28 +17,38 @@ def merge_pdfs(files: list[Path], dest: Path) -> Path:
     return dest
 
 
-def compress_pdf(src: Path, dest: Path, quality: int) -> Path:
-    quality = max(40, min(90, quality))
+def compress_pdf(src: Path, dest: Path, quality: int | None = None) -> Path:
+    """Shrink a PDF. Picks lossless deflate vs lossy page rebuild automatically."""
     source = pymupdf.open(src)
     deflated = dest.with_name(f"{dest.stem}-text.pdf")
-    jpeg_path = dest.with_name(f"{dest.stem}-image.pdf")
-    output = pymupdf.open()
+    candidates: list[Path] = []
     try:
         source.save(deflated, garbage=4, deflate=True, clean=True)
-        for page in source:
-            pixmap = page.get_pixmap(matrix=pymupdf.Matrix(1.5, 1.5), alpha=False)
-            image = pixmap.tobytes("jpeg", jpg_quality=quality)
-            new_page = output.new_page(width=page.rect.width, height=page.rect.height)
-            new_page.insert_image(new_page.rect, stream=image)
-        output.save(jpeg_path, garbage=4, deflate=True, clean=True)
+        candidates.append(deflated)
+        # Auto-pick a compact page encoding; try a few levels and keep the smallest.
+        qualities = [quality] if quality is not None else [50, 65, 80]
+        for q in qualities:
+            q = max(40, min(90, int(q)))
+            candidate = dest.with_name(f"{dest.stem}-q{q}.pdf")
+            output = pymupdf.open()
+            try:
+                for page in source:
+                    pixmap = page.get_pixmap(matrix=pymupdf.Matrix(1.5, 1.5), alpha=False)
+                    image = pixmap.tobytes("jpeg", jpg_quality=q)
+                    new_page = output.new_page(width=page.rect.width, height=page.rect.height)
+                    new_page.insert_image(new_page.rect, stream=image)
+                output.save(candidate, garbage=4, deflate=True, clean=True)
+                candidates.append(candidate)
+            finally:
+                output.close()
     finally:
-        output.close()
         source.close()
-    best = min((deflated, jpeg_path), key=lambda path: path.stat().st_size)
-    best.replace(dest)
-    other = jpeg_path if best == deflated else deflated
-    if other.exists():
-        other.unlink()
+    best = min(candidates, key=lambda path: path.stat().st_size)
+    if best != dest:
+        best.replace(dest)
+    for path in candidates:
+        if path != dest and path.exists():
+            path.unlink(missing_ok=True)
     return dest
 
 

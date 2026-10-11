@@ -245,10 +245,13 @@ def _resolve_mode(query: str, mode: str) -> str:
 
 
 def _resolve_region(region: str) -> str:
-    code = (region or config.SEARCH_DEFAULT_REGION or "SG").strip().upper()
-    if code in {"", "ALL", "WORLD", "WW"}:
-        code = "GLOBAL"
-    return code if code in REGION_PROFILES else "GLOBAL"
+    code = (region or "").strip().upper()
+    if code in {"", "AUTO", "ALL", "WORLD", "WW", "NONE"}:
+        return "GLOBAL"
+    if code in REGION_PROFILES:
+        return code
+    # Free-text / unknown country codes: keep global ranking, use location for query bias.
+    return "GLOBAL"
 
 
 def _split_csv(value: str) -> list[str]:

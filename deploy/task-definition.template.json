@@ -1,0 +1,89 @@
+{
+  "family": "ai-tools-backend",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::639986415410:role/ai-engineer-construction-ecs-execution-role",
+  "taskRoleArn": "arn:aws:iam::639986415410:role/ai-engineer-construction-ecs-task-role",
+  "containerDefinitions": [
+    {
+      "name": "api",
+      "image": "639986415410.dkr.ecr.us-east-1.amazonaws.com/ai-tools/backend:PLACEHOLDER_TAG",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "hostPort": 8000,
+          "protocol": "tcp",
+          "name": "api-8000-tcp"
+        }
+      ],
+      "environment": [
+        { "name": "AWS_DEFAULT_REGION", "value": "us-east-1" },
+        { "name": "PORT", "value": "8000" },
+        { "name": "AUTH_REQUIRED", "value": "false" },
+        { "name": "SEARCH_DEFAULT_REGION", "value": "SG" },
+        { "name": "CORS_ORIGINS", "value": "https://tools.ai-forall.org,http://localhost:5174,http://127.0.0.1:5174" },
+        { "name": "OPENROUTER_BASE_URL", "value": "https://openrouter.ai/api/v1" },
+        { "name": "OPENROUTER_MODEL", "value": "openrouter/auto" },
+        { "name": "JOB_ROOT", "value": "/tmp/ai-tools-jobs" }
+      ],
+      "secrets": [
+        {
+          "name": "OPENROUTER_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:639986415410:secret:REPLACE_SECRET_ARN_SUFFIX:OPENROUTER_API_KEY::"
+        },
+        {
+          "name": "SEARXNG_URL",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:639986415410:secret:REPLACE_SECRET_ARN_SUFFIX:SEARXNG_URL::"
+        },
+        {
+          "name": "AUTH0_DOMAIN",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:639986415410:secret:REPLACE_SECRET_ARN_SUFFIX:AUTH0_DOMAIN::"
+        },
+        {
+          "name": "AUTH0_AUDIENCE",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:639986415410:secret:REPLACE_SECRET_ARN_SUFFIX:AUTH0_AUDIENCE::"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/ai-tools-backend",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "api",
+          "awslogs-create-group": "true"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')\" || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    },
+    {
+      "name": "cloudflared",
+      "image": "cloudflare/cloudflared:latest",
+      "essential": true,
+      "command": ["tunnel", "run"],
+      "secrets": [
+        {
+          "name": "TUNNEL_TOKEN",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:639986415410:secret:REPLACE_SECRET_ARN_SUFFIX:TUNNEL_TOKEN::"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/ai-tools-backend",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "cloudflared",
+          "awslogs-create-group": "true"
+        }
+      }
+    }
+  ]
+}

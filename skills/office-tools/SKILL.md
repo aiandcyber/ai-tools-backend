@@ -1,6 +1,6 @@
 ---
 name: office-tools
-description: Create and convert Office files — DOCX, XLSX, PPTX, CSV, templates, workbook merge.
+description: Create and convert Office files — DOCX, XLSX, PPTX, CSV, and merge Word / Excel / PowerPoint.
 ---
 
 # Office tools
@@ -9,9 +9,9 @@ Use `run_office_tool` with the matching `tool_id`.
 
 ## Common tool ids
 
-- Create DOCX / XLSX / PPTX from text fields
+- `xlsx_merge` / `docx_merge` / `pptx_merge` — combine multiple files
+- Create XLSX / PPTX from text fields
 - Convert CSV ↔ XLSX
-- Merge workbooks
-- Fill DOCX templates from JSON/field values
+- `docx_to_text` — Word to plain text or HTML
 
 Require uploads when the tool accepts files. Keep options_json valid JSON.

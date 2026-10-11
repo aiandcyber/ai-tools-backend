@@ -7,8 +7,19 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini").strip()
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/auto").strip()
 OPENROUTER_STT_MODEL = os.getenv("OPENROUTER_STT_MODEL", "openai/whisper-1").strip()
+
+# LLM routing: auto | openrouter | gemini
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "auto").strip().lower() or "auto"
+# When primary fails, retry once with Gemini if a key is set
+LLM_FALLBACK_GEMINI = os.getenv("LLM_FALLBACK_GEMINI", "true").strip().lower() == "true"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+GEMINI_BASE_URL = os.getenv(
+    "GEMINI_BASE_URL",
+    "https://generativelanguage.googleapis.com/v1beta/openai/",
+).rstrip("/")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
 
 AUTH_REQUIRED = os.getenv("AUTH_REQUIRED", "false").strip().lower() == "true"
 AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN", "").strip()

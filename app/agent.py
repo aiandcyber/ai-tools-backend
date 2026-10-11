@@ -28,6 +28,50 @@ CATEGORY_SKILL = {
 _MCP_CLIENTS: list = []
 
 
+def resolve_llm_provider(preferred: str | None = None) -> str:
+    from app import config
+
+    choice = (preferred or config.LLM_PROVIDER or "auto").strip().lower()
+    if choice == "gemini":
+        if not config.GEMINI_API_KEY:
+            raise RuntimeError("Set GEMINI_API_KEY to use Gemini")
+        return "gemini"
+    if choice == "openrouter":
+        if not config.OPENROUTER_API_KEY:
+            raise RuntimeError("Set OPENROUTER_API_KEY to use OpenRouter")
+        return "openrouter"
+    # auto
+    if config.OPENROUTER_API_KEY:
+        return "openrouter"
+    if config.GEMINI_API_KEY:
+        return "gemini"
+    raise RuntimeError("Set OPENROUTER_API_KEY or GEMINI_API_KEY")
+
+
+def _build_model(provider: str):
+    from strands.models.openai import OpenAIModel
+
+    from app import config
+
+    if provider == "gemini":
+        return OpenAIModel(
+            client_args={
+                "api_key": config.GEMINI_API_KEY,
+                "base_url": config.GEMINI_BASE_URL,
+            },
+            model_id=config.GEMINI_MODEL,
+            params={"temperature": 0.1},
+        )
+    return OpenAIModel(
+        client_args={
+            "api_key": config.OPENROUTER_API_KEY,
+            "base_url": config.OPENROUTER_BASE_URL,
+        },
+        model_id=config.OPENROUTER_MODEL,
+        params={"temperature": 0.1},
+    )
+
+
 def _ids(category: str) -> str:
     return ", ".join(item.id for item in TOOLS if item.category == category)
 
@@ -66,13 +110,11 @@ def category_runner(category: str):
     return run_category_tool
 
 
-def build_orchestrator():
+def build_orchestrator(provider: str | None = None):
     """Build Strands multi-agent graph with Skills + Hooks + Guardrails + MCP."""
     from strands import Agent, tool
-    from strands.models.openai import OpenAIModel
     from strands.vended_plugins.skills import AgentSkills
 
-    from app import config
     from app.strands_ext.guardrails import ContentGuardrail
     from app.strands_ext.hooks import ToolsAuditHook
     from app.strands_ext.mcp_loader import load_mcp_clients
@@ -82,14 +124,8 @@ def build_orchestrator():
     if not SKILLS_ROOT.is_dir():
         raise RuntimeError(f"Skills directory missing: {SKILLS_ROOT}")
 
-    model = OpenAIModel(
-        client_args={
-            "api_key": config.OPENROUTER_API_KEY,
-            "base_url": config.OPENROUTER_BASE_URL,
-        },
-        model_id=config.OPENROUTER_MODEL,
-        params={"temperature": 0.1},
-    )
+    provider = resolve_llm_provider(provider)
+    model = _build_model(provider)
 
     guardrail = ContentGuardrail()
     specialists = []
@@ -130,7 +166,7 @@ def build_orchestrator():
     _MCP_CLIENTS = load_mcp_clients()
     tools: list = list(specialists) + list(_MCP_CLIENTS)
 
-    return Agent(
+    agent = Agent(
         model=model,
         name="tools_orchestrator",
         description="Top-level Tools assistant with Skills, Hooks, Guardrails, and MCP.",
@@ -147,6 +183,8 @@ def build_orchestrator():
         hooks=[ToolsAuditHook(label="orchestrator")],
         interventions=[guardrail],
     )
+    agent._ai_tools_llm_provider = provider  # type: ignore[attr-defined]
+    return agent
 
 
 def strands_feature_status() -> dict:

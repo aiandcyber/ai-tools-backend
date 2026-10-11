@@ -7,6 +7,7 @@ from app.tools import office, pdf
 
 LANG = {
     "en": "English",
+    "yue": "Cantonese",
     "zh": "Chinese",
     "ta": "Tamil",
     "hi": "Hindi",
@@ -54,22 +55,36 @@ def summarize(text: str) -> str:
     return complete("Summarize the user's document in concise Markdown.", text)
 
 
-def translate(text: str, language: str) -> str:
-    name = LANG.get(language, language)
-    return complete(f"Translate the user's text into {name}. Return only the translation.", text)
+def translate(text: str, language: str, source_language: str = "auto") -> str:
+    target = LANG.get(language, language)
+    source = (source_language or "auto").strip().lower()
+    if source in {"", "auto", "detect"}:
+        system = (
+            f"Detect the language of the user's text and translate it into {target}. "
+            "Return only the translation."
+        )
+    else:
+        source_name = LANG.get(source, source_language)
+        system = (
+            f"Translate the user's text from {source_name} into {target}. "
+            "Return only the translation."
+        )
+    return complete(system, text)
 
 
 def rewrite(text: str, instruction: str) -> str:
     return complete(instruction or "Rewrite this more clearly.", text)
 
 
-def draft(request: str, fmt: str) -> str:
+def draft(request: str, fmt: str, template_hint: str = "") -> str:
     if not config.OPENROUTER_API_KEY:
         return request
     if fmt == "pptx":
         system = "Write slide text. Separate slides with a line containing only ---. First line of each slide is the title."
     else:
         system = "Write a clear document from the request. Use plain paragraphs."
+    if template_hint.strip():
+        system += f" Follow this template or style guidance closely:\n{template_hint.strip()[:8000]}"
     return complete(system, request)
 
 
@@ -77,8 +92,9 @@ def classify(src: Path) -> str:
     kind = src.suffix.lower() or "unknown"
     suggestion = {
         ".pdf": "pdf_compress, pdf_merge, pdf_extract_text, ocr",
-        ".docx": "word_to_pdf, docx_to_text, fill_template",
+        ".docx": "word_to_pdf, docx_to_text, docx_merge",
         ".xlsx": "xlsx_to_csv, xlsx_merge",
+        ".pptx": "pptx_merge, pptx_create",
         ".csv": "csv_to_xlsx",
         ".png": "image_compress, image_convert, image_remove_bg",
         ".jpg": "image_compress, image_convert",

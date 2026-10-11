@@ -33,25 +33,19 @@ def _f(name: str, label: str, kind: str, **kwargs) -> Field:
 
 TOOLS: tuple[Tool, ...] = (
     Tool("pdf_merge", "pdf", "Combine PDFs", "Merge two or more PDF files into one, in the order uploaded.", ".pdf", True),
-    Tool("pdf_compress", "pdf", "Compress PDF", "Rebuild each page as a smaller JPEG to reduce file size.", ".pdf", False, (
-        _f("quality", "JPEG quality (40-90)", "number", default="60"),
+    Tool("pdf_compress", "pdf", "Compress PDF", "Reduce PDF file size. Output stays a PDF.", ".pdf", False),
+    Tool("pdf_unlock", "pdf", "Unlock PDF", "Remove a PDF password.", ".pdf", False, (
+        _f("password", "Password", "text", required=True),
     )),
-    Tool("pdf_create", "pdf", "Create PDF", "Create a PDF from the title and text you enter.", "", False, (
-        _f("title", "Title", "text", required=True),
-        _f("body", "Text", "textarea", required=True),
+    Tool("pdf_protect", "pdf", "Protect PDF", "Encrypt a PDF with a password.", ".pdf", False, (
+        _f("password", "Password", "text", required=True),
     )),
-    Tool("word_to_pdf", "pdf", "Word to PDF", "Convert a DOCX file to PDF. Requires LibreOffice in the container.", ".docx", False),
+    Tool("ocr", "pdf", "OCR", "Read text from a scanned PDF or image. Requires Tesseract in the container.", ".pdf,image/*", False),
     Tool("model_to_pdf", "pdf", "3D to PDF", "Load an STL, OBJ, or PLY model and write a three-view PDF.", ".stl,.obj,.ply", False),
     Tool("pdf_pages", "pdf", "Pages", "Split, rotate, reorder, or delete PDF pages.", ".pdf", False, (
         _f("action", "Action", "select", required=True, options=("split", "rotate", "reorder", "delete"), default="split"),
         _f("pages", "Pages (1,3 or 2-4 or new order 3,1,2)", "text", default=""),
         _f("angle", "Rotate degrees", "select", options=("90", "180", "270"), default="90"),
-    )),
-    Tool("pdf_protect", "pdf", "Protect PDF", "Encrypt a PDF with a password.", ".pdf", False, (
-        _f("password", "Password", "text", required=True),
-    )),
-    Tool("pdf_unlock", "pdf", "Unlock PDF", "Remove a PDF password.", ".pdf", False, (
-        _f("password", "Password", "text", required=True),
     )),
     Tool("pdf_decorate", "pdf", "Page numbers and watermark", "Add a watermark and optional page numbers.", ".pdf", False, (
         _f("watermark", "Watermark text", "text", default="CONFIDENTIAL"),
@@ -61,11 +55,15 @@ TOOLS: tuple[Tool, ...] = (
     Tool("pdf_extract_images", "pdf", "Extract images", "Extract embedded images from a PDF into a ZIP.", ".pdf", False),
     Tool("images_to_pdf", "pdf", "Images to PDF", "Place one or more images into a single PDF.", "image/*", True),
     Tool("pdf_to_images", "pdf", "PDF to images", "Render each PDF page to a PNG inside a ZIP.", ".pdf", False),
-    Tool("ocr", "pdf", "OCR", "Read text from a scanned PDF or image. Requires Tesseract in the container.", ".pdf,image/*", False),
     Tool("pdf_to_markdown", "pdf", "PDF to Markdown", "Turn extracted PDF text into a Markdown file.", ".pdf", False),
-    Tool("docx_to_text", "office", "DOCX to text", "Convert a Word file to plain text or HTML.", ".docx", False, (
-        _f("format", "Format", "select", options=("text", "html"), default="text"),
+    Tool("pdf_create", "pdf", "Create PDF", "Create a PDF from the title and text you enter.", "", False, (
+        _f("title", "Title", "text", required=True),
+        _f("body", "Text", "textarea", required=True),
     )),
+    Tool("word_to_pdf", "pdf", "Word to PDF", "Convert a DOCX file to PDF. Requires LibreOffice in the container.", ".docx", False),
+    Tool("xlsx_merge", "office", "Merge Excel", "Copy the first sheet of each workbook into one workbook.", ".xlsx", True),
+    Tool("docx_merge", "office", "Merge Word", "Combine two or more Word files into one document, in upload order.", ".docx", True),
+    Tool("pptx_merge", "office", "Merge PowerPoint", "Combine slides from two or more presentations into one, in upload order.", ".pptx", True),
     Tool("xlsx_create", "office", "Create Excel", "Create an XLSX workbook from CSV text.", "", False, (
         _f("csv", "CSV text", "textarea", required=True),
         _f("sheet", "Sheet name", "text", default="Sheet1"),
@@ -75,9 +73,8 @@ TOOLS: tuple[Tool, ...] = (
     Tool("pptx_create", "office", "Create PowerPoint", "Create slides from text. Separate slides with a line that contains only ---.", "", False, (
         _f("slides", "Slide text", "textarea", required=True),
     )),
-    Tool("xlsx_merge", "office", "Merge Excel", "Copy the first sheet of each workbook into one workbook.", ".xlsx", True),
-    Tool("fill_template", "office", "Fill template", "Replace {{placeholders}} in a DOCX template using JSON.", ".docx", False, (
-        _f("values", "JSON values", "textarea", required=True, default='{"name": "Ada"}'),
+    Tool("docx_to_text", "office", "DOCX to text", "Convert a Word file to plain text or HTML.", ".docx", False, (
+        _f("format", "Format", "select", options=("text", "html"), default="text"),
     )),
     Tool("image_compress", "image", "Compress image", "Re-save an image as JPEG or WebP at a lower quality.", "image/*", False, (
         _f("quality", "Quality (40-95)", "number", default="70"),
@@ -99,6 +96,14 @@ TOOLS: tuple[Tool, ...] = (
     Tool("image_remove_bg", "image", "Remove background", "Remove the background. Uses rembg.", "image/*", False),
     Tool("favicon", "image", "Favicon", "Build a multi-size ICO from an image.", "image/*", False),
     Tool("palette", "image", "Color palette", "List the dominant colors in an image.", "image/*", False),
+    Tool("youtube_mp4", "media", "YouTube to MP4", "Download a YouTube video as MP4.", "", False, (
+        _f("url", "YouTube URL", "text", required=True),
+        _f("quality", "Quality", "select", options=("360", "480", "720", "1080", "best"), default="720"),
+    )),
+    Tool("youtube_mp3", "media", "YouTube to MP3", "Download audio only from a YouTube video as MP3.", "", False, (
+        _f("url", "YouTube URL", "text", required=True),
+        _f("quality", "Quality", "select", options=("64", "128", "192", "320"), default="192"),
+    )),
     Tool("media_convert", "media", "Convert media", "Convert audio or video with ffmpeg.", "audio/*,video/*", False, (
         _f("format", "Format", "select", required=True, options=("mp3", "wav", "m4a", "mp4", "webm"), default="mp3"),
     )),
@@ -110,26 +115,27 @@ TOOLS: tuple[Tool, ...] = (
         _f("kind", "Kind", "select", options=("audio", "video"), default="video"),
     )),
     Tool("extract_audio", "media", "Extract audio", "Save the audio track of a video as MP3.", "video/*", False),
-    Tool("tts", "media", "Text to speech", "Create an MP3 with edge-tts.", "", False, (
+    Tool("tts", "media", "Text to speech", "Translate the text into the output language if needed, then create an MP3 (up to 80,000 characters).", "", False, (
         _f("text", "Text", "textarea", required=True),
-        _f("language", "Language", "select", options=("en", "zh", "ta", "hi", "ml", "kn", "te"), default="en"),
+        _f("language", "Output language", "select", options=("en", "yue", "zh", "ta", "hi", "ml", "kn", "te"), default="en"),
     )),
     Tool("stt", "media", "Speech to text", "Transcribe an audio file through OpenRouter.", "audio/*", False),
     Tool(
         "web_search",
         "search",
-        "Search a Person or Topic",
-        "Enterprise people/topic search across web, news, social, and science via SearXNG, with regional ranking for realtime-ai.",
+        "Search a Person or Product or Topic",
+        "Enterprise people/product/topic search across web, news, social, and science via SearXNG, with regional ranking for realtime-ai.",
         "",
         False,
         (
             _f("query", "Name or topic", "text", required=True),
             _f("mode", "Mode", "select", options=("auto", "person", "topic"), default="auto"),
-            _f("region", "Region priority", "select", options=("SG", "IN", "MY", "US", "GB", "AU", "GLOBAL"), default="SG"),
-            _f("language", "Language", "select", options=("en", "zh", "ta", "hi", "ml", "kn", "te"), default="en"),
+            _f("region_mode", "Region priority", "select", options=("auto", "manual"), default="auto"),
+            _f("region", "Region code", "text", default="AUTO"),
+            _f("location", "Region / location", "text", default=""),
+            _f("language", "Language", "select", options=("en", "yue", "zh", "ta", "hi", "ml", "kn", "te"), default="en"),
             _f("interests", "Profile interests (comma-separated)", "text", default=""),
             _f("industry", "Profile industry", "text", default=""),
-            _f("location", "Profile location", "text", default=""),
         ),
     ),
     Tool("zip_pack", "utility", "Create ZIP", "Pack the uploaded files into one ZIP.", "*", True),
@@ -175,16 +181,18 @@ TOOLS: tuple[Tool, ...] = (
         _f("text", "Or paste text", "textarea", default=""),
     )),
     Tool("translate", "ai", "Translate", "Translate pasted text or an uploaded document.", ".pdf,.docx,.txt,.md", False, (
-        _f("language", "Target language", "select", options=("en", "zh", "ta", "hi", "ml", "kn", "te"), default="en"),
+        _f("source_language", "From language", "select", options=("auto", "en", "yue", "zh", "ta", "hi", "ml", "kn", "te"), default="auto"),
+        _f("language", "Target language", "select", options=("en", "yue", "zh", "ta", "hi", "ml", "kn", "te"), default="en"),
         _f("text", "Or paste text", "textarea", default=""),
     )),
     Tool("rewrite", "ai", "Rewrite", "Rewrite pasted text or an uploaded document.", ".pdf,.docx,.txt,.md", False, (
         _f("instruction", "Instruction", "text", default="Make this clearer and shorter."),
         _f("text", "Or paste text", "textarea", default=""),
     )),
-    Tool("generate_document", "ai", "Generate document", "Draft a PDF, DOCX, or PPTX from a request. Uses OpenRouter when a key is set.", "", False, (
+    Tool("generate_document", "ai", "Generate document", "Draft a PDF, DOCX, or PPTX from a request. Uses OpenRouter when a key is set.", ".docx,.txt,.md", False, (
         _f("request", "Request", "textarea", required=True),
         _f("format", "Format", "select", options=("pdf", "docx", "pptx"), default="docx"),
+        _f("template_preset", "Template", "text", default=""),
     )),
     Tool("classify", "ai", "Classify file", "Identify a file type and suggest the next tool.", "*", False),
 )
@@ -196,7 +204,7 @@ CATEGORIES = (
     ("pdf", "Documents / PDF"),
     ("office", "Office"),
     ("image", "Images"),
-    ("media", "Audio / video"),
+    ("media", "YouTube / Audio / Video"),
     ("utility", "Utilities"),
     ("ai", "AI"),
 )

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import re
 import shutil
 import socket
@@ -176,9 +177,56 @@ def _ensure_doh_dns_fallback() -> None:
     _doh_patched = True
 
 
+_COOKIE_PATH: Path | None = None
+
+YOUTUBE_BLOCKED_MSG = (
+    "YouTube is blocking your connection. Try later, or send a message to us to investigate."
+)
+
+
+def is_youtube_block_error(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    return any(
+        needle in msg
+        for needle in (
+            "not a bot",
+            "sign in to confirm",
+            "cookies-from-browser",
+            "use --cookies",
+            "bot check",
+            "confirm you're not a bot",
+            "confirm you are not a bot",
+        )
+    )
+
+
+def youtube_public_error(exc: BaseException) -> str:
+    if isinstance(exc, ValueError):
+        return str(exc)
+    return YOUTUBE_BLOCKED_MSG
+
+
+def _youtube_cookiefile() -> str | None:
+    """Netscape cookies from YOUTUBE_COOKIEFILE or YOUTUBE_COOKIES env."""
+    global _COOKIE_PATH
+    explicit = os.getenv("YOUTUBE_COOKIEFILE", "").strip()
+    if explicit and Path(explicit).is_file():
+        return explicit
+    raw = os.getenv("YOUTUBE_COOKIES", "").strip()
+    if not raw:
+        return None
+    if _COOKIE_PATH and _COOKIE_PATH.is_file():
+        return str(_COOKIE_PATH)
+    dest = Path("/tmp/youtube-cookies.txt")
+    dest.write_text(raw.replace("\r\n", "\n") + ("\n" if not raw.endswith("\n") else ""), encoding="utf-8")
+    dest.chmod(0o600)
+    _COOKIE_PATH = dest
+    return str(dest)
+
+
 def _ydl_common() -> dict:
     _ensure_doh_dns_fallback()
-    return {
+    opts = {
         "noplaylist": True,
         "quiet": True,
         "noprogress": True,
@@ -187,6 +235,10 @@ def _ydl_common() -> dict:
         "socket_timeout": 30,
         "force_ipv4": True,
     }
+    cookiefile = _youtube_cookiefile()
+    if cookiefile:
+        opts["cookiefile"] = cookiefile
+    return opts
 
 
 def _mp4_format(quality: str) -> str:

@@ -12,6 +12,7 @@ from app import config
 from app.agent import CHAT_DOWNLOADS, CHAT_FILES, build_orchestrator, resolve_llm_provider
 from app.auth import check_auth, tool_requires_auth
 from app.catalog import CATEGORIES, TOOLS
+from app.mail import send_feedback
 from app.runner import export_text, run_tool
 from app.workspace import publish, resolve_download
 
@@ -100,6 +101,10 @@ async def execute_tool(tool_id: str, request: Request):
                 len(str(options.get("text") or "")),
                 options.get("language"),
             )
+        if tool_id in {"youtube_mp4", "youtube_mp3"}:
+            from app.tools import media as media_tool
+
+            raise HTTPException(status_code=400, detail=media_tool.youtube_public_error(exc)) from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
         "message": outcome.message,
@@ -225,8 +230,32 @@ async def youtube_probe(request: Request):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Could not read video info: {exc}") from exc
+        raise HTTPException(status_code=502, detail=media_tool.youtube_public_error(exc)) from exc
     return payload
+
+
+@app.post("/api/feedback")
+async def feedback(request: Request):
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid form") from exc
+    email = str(payload.get("email") or "").strip()
+    youtube_url = str(payload.get("youtube_url") or payload.get("youtube") or "").strip()
+    message = str(payload.get("message") or "").strip()
+    if not email or not message:
+        raise HTTPException(status_code=400, detail="Email and message are required")
+    try:
+        await asyncio.to_thread(send_feedback, email, youtube_url, message)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        logging.getLogger("uvicorn.error").exception("feedback email failed")
+        raise HTTPException(
+            status_code=502,
+            detail="Could not send email. Check the address or try later.",
+        ) from None
+    return {"ok": True}
 
 
 @app.post("/api/tts")

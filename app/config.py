@@ -38,3 +38,12 @@ JOB_ROOT = Path(os.getenv("JOB_ROOT", "/tmp/ai-tools-jobs"))
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(80 * 1024 * 1024)))
 SEARXNG_URL = os.getenv("SEARXNG_URL", "http://127.0.0.1:8080").rstrip("/")
 SEARCH_DEFAULT_REGION = os.getenv("SEARCH_DEFAULT_REGION", "SG").strip().upper() or "SG"
+
+SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587") or "587")
+SMTP_USER = os.getenv("SMTP_USER", "").strip()
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip()
+SMTP_FROM = os.getenv("SMTP_FROM", "contact@ai-forall.org").strip() or "contact@ai-forall.org"
+FEEDBACK_TO = os.getenv("FEEDBACK_TO", "contact@ai-forall.org").strip() or "contact@ai-forall.org"
+CF_ACCOUNT_ID = os.getenv("CF_ACCOUNT_ID", "").strip()
+CF_EMAIL_API_TOKEN = os.getenv("CF_EMAIL_API_TOKEN", "").strip()

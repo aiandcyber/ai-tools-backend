@@ -47,3 +47,10 @@ SMTP_FROM = os.getenv("SMTP_FROM", "contact@ai-forall.org").strip() or "contact@
 FEEDBACK_TO = os.getenv("FEEDBACK_TO", "contact@ai-forall.org").strip() or "contact@ai-forall.org"
 CF_ACCOUNT_ID = os.getenv("CF_ACCOUNT_ID", "").strip()
 CF_EMAIL_API_TOKEN = os.getenv("CF_EMAIL_API_TOKEN", "").strip()
+TURNSTILE_SECRET = os.getenv("TURNSTILE_SECRET", "").strip()
+TURNSTILE_HOSTNAMES = {
+    host.strip()
+    for host in os.getenv("TURNSTILE_HOSTNAMES", "").split(",")
+    if host.strip()
+}
+TURNSTILE_ACTION = os.getenv("TURNSTILE_ACTION", "contact").strip() or "contact"

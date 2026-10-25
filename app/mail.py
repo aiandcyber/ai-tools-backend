@@ -37,25 +37,37 @@ def _has_mail_domain(domain: str) -> bool:
     return False
 
 
-def send_feedback(user_email: str, youtube_url: str, message: str) -> None:
+_TOPIC_LABELS = {
+    "new_tool": "New tool request",
+    "youtube": "YouTube error",
+    "error": "Error report",
+    "feedback": "Feedback",
+    "contact": "Contact",
+}
+
+
+def send_feedback(user_email: str, youtube_url: str, message: str, topic: str = "contact") -> None:
     email = (user_email or "").strip()
     if not looks_real_email(email):
         raise ValueError("Please enter a real email address")
+    kind = (topic or "contact").strip().lower()
+    label = _TOPIC_LABELS.get(kind, _TOPIC_LABELS["contact"])
     report = (
         f"From: {email}\n"
-        f"YouTube link: {(youtube_url or '').strip() or '(none)'}\n\n"
+        f"Topic: {label}\n"
+        f"Link: {(youtube_url or '').strip() or '(none)'}\n\n"
         f"{(message or '').strip()}"
     )
     # Send to the user first. If that address is dead, do not send to contact@.
     _deliver(
         to=email,
-        subject="We received your YouTube tools report",
-        body=f"Thanks. We received this report:\n\n{report}",
+        subject=f"We received your message ({label})",
+        body=f"Thanks. We received this message:\n\n{report}",
         reply_to=config.FEEDBACK_TO,
     )
     _deliver(
         to=config.FEEDBACK_TO,
-        subject="YouTube tool report",
+        subject=f"Need a tool? — {label}",
         body=report,
         reply_to=email,
     )

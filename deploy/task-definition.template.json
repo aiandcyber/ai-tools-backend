@@ -27,7 +27,9 @@
         { "name": "CORS_ORIGINS", "value": "https://tools.ai-forall.org,http://localhost:5174,http://127.0.0.1:5174" },
         { "name": "OPENROUTER_BASE_URL", "value": "https://openrouter.ai/api/v1" },
         { "name": "OPENROUTER_MODEL", "value": "openrouter/auto" },
-        { "name": "JOB_ROOT", "value": "/tmp/ai-tools-jobs" }
+        { "name": "JOB_ROOT", "value": "/tmp/ai-tools-jobs" },
+        { "name": "TURNSTILE_HOSTNAMES", "value": "tools.ai-forall.org" },
+        { "name": "TURNSTILE_ACTION", "value": "contact" }
       ],
       "secrets": [
         {

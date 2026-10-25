@@ -13,6 +13,7 @@ from app.agent import CHAT_DOWNLOADS, CHAT_FILES, build_orchestrator, resolve_ll
 from app.auth import check_auth, tool_requires_auth
 from app.catalog import CATEGORIES, TOOLS
 from app.mail import send_feedback
+from app.turnstile import verify_turnstile
 from app.runner import export_text, run_tool
 from app.workspace import publish, resolve_download
 
@@ -241,12 +242,19 @@ async def feedback(request: Request):
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Invalid form") from exc
     email = str(payload.get("email") or "").strip()
+    topic = str(payload.get("topic") or "contact").strip().lower()
     youtube_url = str(payload.get("youtube_url") or payload.get("youtube") or "").strip()
     message = str(payload.get("message") or "").strip()
+    token = str(
+        payload.get("cf-turnstile-response")
+        or payload.get("turnstile_token")
+        or ""
+    ).strip()
     if not email or not message:
         raise HTTPException(status_code=400, detail="Email and message are required")
+    verify_turnstile(request, token)
     try:
-        await asyncio.to_thread(send_feedback, email, youtube_url, message)
+        await asyncio.to_thread(send_feedback, email, youtube_url, message, topic)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception:

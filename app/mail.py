@@ -67,7 +67,7 @@ def send_feedback(user_email: str, youtube_url: str, message: str, topic: str = 
     )
     _deliver(
         to=config.FEEDBACK_TO,
-        subject=f"Need a tool? — {label}",
+        subject=f"Need New Tool? — {label}",
         body=report,
         reply_to=email,
     )

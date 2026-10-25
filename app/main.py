@@ -130,6 +130,30 @@ async def export_text_api(request: Request):
     }
 
 
+def _search_api_get(path: str):
+    import httpx
+
+    try:
+        response = httpx.get(f"{config.SEARCH_API_URL}{path}", timeout=35.0)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Search API unreachable: {exc}") from exc
+    if response.status_code >= 400:
+        raise HTTPException(status_code=response.status_code, detail=response.text[:300])
+    return response.json()
+
+
+def _search_api_post(path: str, body: dict):
+    import httpx
+
+    try:
+        response = httpx.post(f"{config.SEARCH_API_URL}{path}", json=body, timeout=60.0)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Search API unreachable: {exc}") from exc
+    if response.status_code >= 400:
+        raise HTTPException(status_code=response.status_code, detail=response.text[:300])
+    return response.json()
+
+
 @app.post("/api/search")
 async def search_api(request: Request):
     """JSON search API for Tools UI and realtime-ai (news / recommendations / requests)."""
@@ -139,6 +163,9 @@ async def search_api(request: Request):
         raise HTTPException(status_code=400, detail="Expected JSON body") from exc
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="Expected JSON object")
+    if config.SEARCH_API_URL:
+        return _search_api_post("/api/search", body)
+    # Local fallback only. Production sets SEARCH_API_URL to the Search API.
     from app.tools import search as search_tool
 
     try:
@@ -159,8 +186,23 @@ async def search_api(request: Request):
     return payload
 
 
+@app.post("/api/search/people/reject")
+async def search_people_reject(request: Request):
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Expected JSON body") from exc
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Expected JSON object")
+    if not config.SEARCH_API_URL:
+        raise HTTPException(status_code=503, detail="Search API is not configured")
+    return _search_api_post("/api/search/people/reject", body)
+
+
 @app.get("/api/search/regions")
 def search_regions() -> dict:
+    if config.SEARCH_API_URL:
+        return _search_api_get("/api/search/regions")
     from app.tools.search import REGION_PROFILES
 
     return {

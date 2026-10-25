@@ -38,6 +38,8 @@ JOB_ROOT = Path(os.getenv("JOB_ROOT", "/tmp/ai-tools-jobs"))
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(80 * 1024 * 1024)))
 SEARXNG_URL = os.getenv("SEARXNG_URL", "http://127.0.0.1:8080").rstrip("/")
 SEARCH_DEFAULT_REGION = os.getenv("SEARCH_DEFAULT_REGION", "SG").strip().upper() or "SG"
+# When set, /api/search is served by the slim Search API (ai-tools/search), not this process.
+SEARCH_API_URL = os.getenv("SEARCH_API_URL", "").rstrip("/")
 
 SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587") or "587")

@@ -505,8 +505,8 @@ _DISPATCH = {
     "image_remove_bg": _bg,
     "favicon": _favicon,
     "palette": _palette,
-    "youtube_mp4": _youtube_mp4,
-    "youtube_mp3": _youtube_mp3,
+    # "youtube_mp4": _youtube_mp4,  # off website; use ytube-download app
+    # "youtube_mp3": _youtube_mp3,
     "media_convert": _media_convert,
     "media_trim": _media_trim,
     "media_compress": _media_compress,

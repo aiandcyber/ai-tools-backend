@@ -96,14 +96,15 @@ TOOLS: tuple[Tool, ...] = (
     Tool("image_remove_bg", "image", "Remove background", "Remove the background. Uses rembg.", "image/*", False),
     Tool("favicon", "image", "Favicon", "Build a multi-size ICO from an image.", "image/*", False),
     Tool("palette", "image", "Color palette", "List the dominant colors in an image.", "image/*", False),
-    Tool("youtube_mp4", "media", "YouTube to MP4", "Download a YouTube video as MP4.", "", False, (
-        _f("url", "YouTube URL", "text", required=True),
-        _f("quality", "Quality", "select", options=("360", "480", "720", "1080", "best"), default="720"),
-    )),
-    Tool("youtube_mp3", "media", "YouTube to MP3", "Download audio only from a YouTube video as MP3.", "", False, (
-        _f("url", "YouTube URL", "text", required=True),
-        _f("quality", "Quality", "select", options=("64", "128", "192", "320"), default="192"),
-    )),
+    # YouTube MP4/MP3 moved to the on-device ytube-download app.
+    # Tool("youtube_mp4", "media", "YouTube to MP4", "Download a YouTube video as MP4.", "", False, (
+    #     _f("url", "YouTube URL", "text", required=True),
+    #     _f("quality", "Quality", "select", options=("360", "480", "720", "1080", "best"), default="720"),
+    # )),
+    # Tool("youtube_mp3", "media", "YouTube to MP3", "Download audio only from a YouTube video as MP3.", "", False, (
+    #     _f("url", "YouTube URL", "text", required=True),
+    #     _f("quality", "Quality", "select", options=("64", "128", "192", "320"), default="192"),
+    # )),
     Tool("media_convert", "media", "Convert media", "Convert audio or video with ffmpeg.", "audio/*,video/*", False, (
         _f("format", "Format", "select", required=True, options=("mp3", "wav", "m4a", "mp4", "webm"), default="mp3"),
     )),
@@ -204,7 +205,7 @@ CATEGORIES = (
     ("pdf", "Documents / PDF"),
     ("office", "Office"),
     ("image", "Images"),
-    ("media", "YouTube / Audio / Video"),
+    ("media", "Audio/Video"),
     ("utility", "Utilities"),
     ("ai", "AI"),
 )

@@ -176,8 +176,10 @@ def build_orchestrator(provider: str | None = None):
             "Activate `tools-orchestrator` via the skills tool when helpful. "
             "Prefer specialist tools for file work. Use MCP tools (mcp_tools_*) to inspect the catalog "
             "or search regions when the user asks what tools/regions exist. "
-            "Reply in the user's language. Never invent download links or social profile URLs."
+            "Reply in the user's language. Never invent download links or social profile URLs. "
+            "Write plain sentences. Do not use emoji, markdown, asterisks, or stage directions."
         ),
+        callback_handler=None,
         tools=tools,
         plugins=[AgentSkills(skills=[SKILLS_ROOT])],
         hooks=[ToolsAuditHook(label="orchestrator")],

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import shutil
 import uuid
@@ -6,7 +7,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from app import config
 from app.agent import CHAT_DOWNLOADS, CHAT_FILES, build_orchestrator, resolve_llm_provider
@@ -214,6 +215,42 @@ def search_regions() -> dict:
     }
 
 
+def _sse(payload: dict) -> str:
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _event_delta(event) -> str:
+    if isinstance(event, str):
+        return event
+    if not isinstance(event, dict):
+        return ""
+    if event.get("current_tool_use") and not event.get("data"):
+        return ""
+    data = event.get("data")
+    if isinstance(data, str) and data:
+        return data
+    text = event.get("text")
+    if isinstance(text, str) and text:
+        return text
+    return ""
+
+
+def _wants_chat_stream(request: Request, options: dict) -> bool:
+    flag = str(options.get("stream") or "").strip().lower()
+    if flag in {"1", "true", "yes"}:
+        return True
+    accept = request.headers.get("accept", "")
+    return "text/event-stream" in accept
+
+
+async def _iter_agent_text(prompt: str, provider: str):
+    agent = _agent(provider)
+    async for event in agent.stream_async(prompt):
+        piece = _event_delta(event)
+        if piece:
+            yield piece
+
+
 @app.post("/api/chat")
 async def chat(request: Request, _: None = Depends(check_auth)):
     if not _has_llm_key():
@@ -226,37 +263,100 @@ async def chat(request: Request, _: None = Depends(check_auth)):
     language = str(options.get("language", "en"))
     file_token = CHAT_FILES.set(saved)
     download_token = CHAT_DOWNLOADS.set([])
-    provider_used = None
-    result = None
-    try:
-        names = ", ".join(path.name for path in saved) or "none"
-        prompt = f"User language code: {language}.\nAttached files: {names}.\n\n{message}"
+    names = ", ".join(path.name for path in saved) or "none"
+    prompt = f"User language code: {language}.\nAttached files: {names}.\n\n{message}"
+    stream = _wants_chat_stream(request, options)
 
-        def _run(provider: str):
-            return _agent(provider)(prompt)
+    def _run(provider: str):
+        return _agent(provider)(prompt)
 
+    async def _generate(provider: str):
+        got = False
+        async for piece in _iter_agent_text(prompt, provider):
+            got = True
+            yield piece
+        if not got:
+            result = await asyncio.to_thread(_run, provider)
+            text = str(result or "")
+            if text:
+                yield text
+
+    if not stream:
+        provider_used = None
+        result = None
         try:
-            provider_used = resolve_llm_provider()
-            # Strands agent is sync; run off the event loop so one chat can't freeze the API
-            result = await asyncio.to_thread(_run, provider_used)
-        except Exception as primary_exc:
-            can_fallback = (
-                config.LLM_FALLBACK_GEMINI
-                and config.GEMINI_API_KEY
-                and provider_used != "gemini"
-            )
-            if not can_fallback:
-                raise
-            provider_used = "gemini"
-            result = await asyncio.to_thread(_run, "gemini")
-            _ = primary_exc
-        downloads = list(CHAT_DOWNLOADS.get())
+            try:
+                provider_used = resolve_llm_provider()
+                result = await asyncio.to_thread(_run, provider_used)
+            except Exception as primary_exc:
+                can_fallback = (
+                    config.LLM_FALLBACK_GEMINI
+                    and config.GEMINI_API_KEY
+                    and provider_used != "gemini"
+                )
+                if not can_fallback:
+                    raise
+                provider_used = "gemini"
+                result = await asyncio.to_thread(_run, "gemini")
+                _ = primary_exc
+            downloads = list(CHAT_DOWNLOADS.get())
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        finally:
+            CHAT_FILES.reset(file_token)
+            CHAT_DOWNLOADS.reset(download_token)
+        return {"reply": str(result), "downloads": downloads, "llm_provider": provider_used}
+
+    async def events():
+        provider_used = None
+        try:
+            try:
+                provider_used = resolve_llm_provider()
+                async for piece in _generate(provider_used):
+                    yield _sse({"type": "delta", "text": piece})
+            except Exception as primary_exc:
+                can_fallback = (
+                    config.LLM_FALLBACK_GEMINI
+                    and config.GEMINI_API_KEY
+                    and provider_used != "gemini"
+                )
+                if not can_fallback:
+                    raise
+                provider_used = "gemini"
+                _ = primary_exc
+                async for piece in _generate("gemini"):
+                    yield _sse({"type": "delta", "text": piece})
+            downloads = list(CHAT_DOWNLOADS.get())
+            yield _sse({"type": "done", "downloads": downloads, "llm_provider": provider_used})
+        except Exception as exc:
+            yield _sse({"type": "error", "detail": str(exc)})
+        finally:
+            CHAT_FILES.reset(file_token)
+            CHAT_DOWNLOADS.reset(download_token)
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.post("/api/stt")
+async def stt_api(request: Request, _: None = Depends(check_auth)):
+    _options, saved = await _read_form(request)
+    if not saved:
+        raise HTTPException(status_code=400, detail="Audio is required")
+    from app.tools import media as media_tool
+
+    try:
+        text = await asyncio.to_thread(media_tool.speech_to_text, saved[0])
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    finally:
-        CHAT_FILES.reset(file_token)
-        CHAT_DOWNLOADS.reset(download_token)
-    return {"reply": str(result), "downloads": downloads, "llm_provider": provider_used}
+    return {"text": text}
 
 
 @app.post("/api/youtube/probe")
@@ -312,14 +412,15 @@ async def feedback(request: Request):
 async def tts(request: Request):
     """Speak agent replies with edge-tts (neural voices). Returns audio/mpeg."""
     options, _saved = await _read_form(request)
-    text = str(options.get("text") or "").strip()
+    from app.tools import media as media_tool
+
+    text = media_tool.speakable_text(str(options.get("text") or ""))
     language = str(options.get("language") or "en").strip() or "en"
     if not text:
         raise HTTPException(status_code=400, detail="text is required")
     # Keep replies snappy for speak-aloud
     if len(text) > 4000:
         text = text[:4000] + "…"
-    from app.tools import media as media_tool
 
     work = config.JOB_ROOT / "tts" / uuid.uuid4().hex
     work.mkdir(parents=True, exist_ok=True)

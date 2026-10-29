@@ -453,6 +453,44 @@ def download_youtube_mp3(url: str, dest_dir: Path, quality: str = "192") -> Path
     return _youtube_downloaded_file(dest_dir, ".mp3")
 
 
+_EMOJI_RE = re.compile(
+    "["
+    "\U0001F1E0-\U0001F1FF"
+    "\U0001F300-\U0001F5FF"
+    "\U0001F600-\U0001F64F"
+    "\U0001F680-\U0001F6FF"
+    "\U0001F700-\U0001F77F"
+    "\U0001F780-\U0001F7FF"
+    "\U0001F800-\U0001F8FF"
+    "\U0001F900-\U0001F9FF"
+    "\U0001FA00-\U0001FA6F"
+    "\U0001FA70-\U0001FAFF"
+    "\u2600-\u26FF"
+    "\u2700-\u27BF"
+    "]+",
+    flags=re.UNICODE,
+)
+_STAGE_DIR_RE = re.compile(r"\*\s*(?:waving|waves|wave)[^*]*\*", flags=re.IGNORECASE)
+_NAMED_EMOJI_RE = re.compile(
+    r"\b(waving hand|thumbs up|red heart|smiling face|star-struck|asterisks?)\b",
+    flags=re.IGNORECASE,
+)
+
+
+def speakable_text(text: str) -> str:
+    """Strip markdown, emoji, and stage directions so TTS does not read them aloud."""
+    spoken = text or ""
+    spoken = re.sub(r"!\[[^\]]*]\([^)]*\)", " ", spoken)
+    spoken = re.sub(r"\[([^\]]*)]\([^)]*\)", r"\1", spoken)
+    spoken = _STAGE_DIR_RE.sub(" ", spoken)
+    spoken = re.sub(r"\*\*(.+?)\*\*", r"\1", spoken)
+    spoken = re.sub(r"\*(.+?)\*", r"\1", spoken)
+    spoken = re.sub(r"[*_~`#>]+", " ", spoken)
+    spoken = _EMOJI_RE.sub(" ", spoken)
+    spoken = _NAMED_EMOJI_RE.sub(" ", spoken)
+    return re.sub(r"\s+", " ", spoken).strip()
+
+
 def _get_piper_voice(lang: str):
     from piper.voice import PiperVoice
 
@@ -479,7 +517,7 @@ def _get_piper_voice(lang: str):
 
 
 def _piper_tts_save(text: str, language: str, dest: Path) -> None:
-    spoken = (text or "").strip()
+    spoken = speakable_text(text)
     if not spoken:
         raise ValueError("Enter text to speak")
     if len(spoken) > TTS_MAX_CHARS:

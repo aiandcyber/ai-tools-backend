@@ -6,6 +6,8 @@ import shutil
 import socket
 import subprocess
 import threading
+import urllib.request
+import wave
 from pathlib import Path
 
 import httpx
@@ -14,6 +16,18 @@ from app import config
 
 _log = logging.getLogger("uvicorn.error")
 _tts_lock = threading.Lock()
+_piper_voices: dict[str, object] = {}
+
+PIPER_HF_BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
+PIPER_MODEL_DIR = Path(os.getenv("PIPER_MODEL_DIR", "/tmp/piper-models"))
+PIPER_VOICES = {
+    "en": "en/en_US/lessac/medium/en_US-lessac-medium",
+    "zh": "zh/zh_CN/huayan/medium/zh_CN-huayan-medium",
+    "yue": "zh/zh_CN/huayan/medium/zh_CN-huayan-medium",
+    "hi": "hi/hi_IN/priyamvada/medium/hi_IN-priyamvada-medium",
+    "ml": "ml/ml_IN/meera/medium/ml_IN-meera-medium",
+    "te": "te/te_IN/padmavathi/medium/te_IN-padmavathi-medium",
+}
 
 VOICES = {
     "en": "en-US-AriaNeural",
@@ -439,31 +453,76 @@ def download_youtube_mp3(url: str, dest_dir: Path, quality: str = "192") -> Path
     return _youtube_downloaded_file(dest_dir, ".mp3")
 
 
+def _get_piper_voice(lang: str):
+    from piper.voice import PiperVoice
+
+    rel = PIPER_VOICES.get(lang, PIPER_VOICES["en"])
+    with _tts_lock:
+        cached = _piper_voices.get(rel)
+        if cached is not None:
+            return cached
+        PIPER_MODEL_DIR.mkdir(parents=True, exist_ok=True)
+        model_name = rel.rsplit("/", 1)[-1]
+        onnx_path = PIPER_MODEL_DIR / f"{model_name}.onnx"
+        cfg_path = PIPER_MODEL_DIR / f"{model_name}.onnx.json"
+        if not onnx_path.exists() or onnx_path.stat().st_size == 0:
+            tmp_onnx = onnx_path.with_suffix(".onnx.part")
+            urllib.request.urlretrieve(f"{PIPER_HF_BASE}/{rel}.onnx", tmp_onnx)
+            tmp_onnx.replace(onnx_path)
+        if not cfg_path.exists() or cfg_path.stat().st_size == 0:
+            tmp_cfg = cfg_path.with_suffix(".json.part")
+            urllib.request.urlretrieve(f"{PIPER_HF_BASE}/{rel}.onnx.json", tmp_cfg)
+            tmp_cfg.replace(cfg_path)
+        voice = PiperVoice.load(onnx_path, config_path=cfg_path)
+        _piper_voices[rel] = voice
+        return voice
+
+
+def _piper_tts_save(text: str, language: str, dest: Path) -> None:
+    spoken = (text or "").strip()
+    if not spoken:
+        raise ValueError("Enter text to speak")
+    if len(spoken) > TTS_MAX_CHARS:
+        raise ValueError(
+            f"Text is {len(spoken):,} characters. Maximum is {TTS_MAX_CHARS:,}. "
+            "Split the text and run Text to speech more than once."
+        )
+    lang = _detect_tts_lang(spoken, language)
+    voice = _get_piper_voice(lang)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    wav_path = dest if dest.suffix.lower() == ".wav" else dest.with_suffix(".piper.wav")
+    with _tts_lock:
+        with wave.open(str(wav_path), "wb") as wf:
+            voice.synthesize_wav(spoken, wf)
+    if not wav_path.exists() or wav_path.stat().st_size <= 44:
+        raise RuntimeError("Piper TTS produced empty audio")
+    if wav_path != dest:
+        try:
+            _ffmpeg(
+                [
+                    "-i",
+                    str(wav_path),
+                    "-vn",
+                    "-acodec",
+                    "libmp3lame",
+                    "-q:a",
+                    "4",
+                    str(dest),
+                ]
+            )
+        finally:
+            wav_path.unlink(missing_ok=True)
+
+
 def text_to_speech(text: str, language: str, dest: Path) -> Path:
-    """Sync TTS for tool runner. Safe when no event loop is running."""
-
-    async def _save() -> None:
-        await _edge_tts_save(text, language, dest)
-
-    def _run() -> None:
-        with _tts_lock:
-            asyncio.run(_save())
-
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        _run()
-    else:
-        import concurrent.futures
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            pool.submit(_run).result(timeout=900)
+    """Sync TTS using Piper ONNX neural voices."""
+    _piper_tts_save(text, language, dest)
     return dest
 
 
 async def text_to_speech_async(text: str, language: str, dest: Path) -> Path:
     """Async TTS for /api/tts (agent speak replies)."""
-    await _edge_tts_save(text, language, dest)
+    await asyncio.to_thread(_piper_tts_save, text, language, dest)
     return dest
 
 

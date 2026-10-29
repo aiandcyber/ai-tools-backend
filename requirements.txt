@@ -15,6 +15,7 @@ qrcode>=8.0
 python-barcode>=0.15
 PyYAML>=6.0
 edge-tts>=7.0
+piper-tts>=1.8
 yt-dlp>=2025.1.15
 trimesh>=4.0
 numpy>=2.0

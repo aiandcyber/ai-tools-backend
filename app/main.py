@@ -261,8 +261,6 @@ async def chat(request: Request, _: None = Depends(check_auth)):
     options, saved = await _read_form(request)
     message = str(options.get("message", ""))
     language = str(options.get("language", "en"))
-    file_token = CHAT_FILES.set(saved)
-    download_token = CHAT_DOWNLOADS.set([])
     names = ", ".join(path.name for path in saved) or "none"
     prompt = f"User language code: {language}.\nAttached files: {names}.\n\n{message}"
     stream = _wants_chat_stream(request, options)
@@ -284,6 +282,8 @@ async def chat(request: Request, _: None = Depends(check_auth)):
     if not stream:
         provider_used = None
         result = None
+        file_token = CHAT_FILES.set(saved)
+        download_token = CHAT_DOWNLOADS.set([])
         try:
             try:
                 provider_used = resolve_llm_provider()
@@ -307,8 +307,12 @@ async def chat(request: Request, _: None = Depends(check_auth)):
             CHAT_DOWNLOADS.reset(download_token)
         return {"reply": str(result), "downloads": downloads, "llm_provider": provider_used}
 
+    # ContextVars must be set/reset inside the streaming task. Tokens created in the
+    # request handler cannot be reset from Starlette's stream task group.
     async def events():
         provider_used = None
+        file_token = CHAT_FILES.set(saved)
+        download_token = CHAT_DOWNLOADS.set([])
         try:
             try:
                 provider_used = resolve_llm_provider()

@@ -270,9 +270,126 @@ def _tts(files, options, work):
 
 
 def _stt(files, options, work):
+    language = _opt(options, "language", "auto") or "auto"
     dest = work / "transcript.txt"
-    dest.write_text(media.speech_to_text(_one(files)), encoding="utf-8")
+    dest.write_text(media.speech_to_text(_one(files), language), encoding="utf-8")
     return Outcome("Transcribed audio", [dest])
+
+
+def _segments_to_translated(segments: list[dict], language: str, source_language: str) -> list[dict]:
+    texts = [str(item.get("text") or "") for item in segments]
+    translated = ai.translate_lines(texts, language, source_language)
+    out = []
+    for item, text in zip(segments, translated):
+        out.append({**item, "text": text})
+    return out
+
+
+def _video_translate(files, options, work):
+    src = _one(files)
+    language = _opt(options, "language", "en") or "en"
+    source_language = _opt(options, "source_language", "auto") or "auto"
+    audio = media.extract_audio(src, work / "source-audio.mp3")
+    detailed = media.speech_to_text_detailed(audio, source_language)
+    transcript = (detailed.get("text") or "").strip()
+    if not transcript:
+        raise ValueError("No speech was detected in this video")
+    translation = ai.translate(transcript, language, source_language)
+    out_files = []
+    transcript_path = work / "transcript.txt"
+    transcript_path.write_text(transcript + "\n", encoding="utf-8")
+    out_files.append(transcript_path)
+    translation_path = work / "translation.txt"
+    translation_path.write_text(translation + "\n", encoding="utf-8")
+    out_files.append(translation_path)
+    segments = detailed.get("segments") or []
+    if segments:
+        translated_segments = _segments_to_translated(segments, language, source_language)
+    else:
+        translated_segments = [{"start": 0.0, "end": max(2.0, float(detailed.get("duration") or 2)), "text": translation}]
+    srt = media.write_srt(translated_segments, work / "subtitles.srt")
+    out_files.append(srt)
+    muxed = work / f"{src.stem}-subtitled.mp4"
+    result = media.mux_soft_subtitles(src, srt, muxed)
+    if result.exists() and result != src:
+        out_files.append(result)
+    return Outcome("Translated video speech and created subtitles", out_files)
+
+
+def _audio_translate(files, options, work):
+    src = _one(files)
+    language = _opt(options, "language", "en") or "en"
+    source_language = _opt(options, "source_language", "auto") or "auto"
+    detailed = media.speech_to_text_detailed(src, source_language)
+    transcript = (detailed.get("text") or "").strip()
+    if not transcript:
+        raise ValueError("No speech was detected in this audio")
+    translation = ai.translate(transcript, language, source_language)
+    transcript_path = work / "transcript.txt"
+    transcript_path.write_text(transcript + "\n", encoding="utf-8")
+    translation_path = work / "translation.txt"
+    translation_path.write_text(translation + "\n", encoding="utf-8")
+    speech = work / "translation.mp3"
+    # text_to_speech may be sync wrapper — check media API
+    spoken = media.text_to_speech(translation, language, speech)
+    return Outcome("Translated audio", [transcript_path, translation_path, spoken])
+
+
+def _youtube_summarize(files, options, work):
+    url = _opt(options, "url")
+    language = _opt(options, "language", "en") or "en"
+    detailed = media.youtube_transcript(url, work / "yt", language)
+    text = (detailed.get("text") or "").strip()
+    if not text:
+        raise ValueError("Could not read captions or audio from that YouTube URL")
+    title = detailed.get("title") or ""
+    summary = ai.summarize(f"Title: {title}\n\n{text}" if title else text)
+    # If user asked for a non-English summary language, translate the summary.
+    if language not in {"", "en"} and not language.startswith("en"):
+        summary = ai.translate(summary, language, "auto")
+    dest = work / "youtube-summary.md"
+    header = f"# {title}\n\n" if title else ""
+    dest.write_text(header + summary.strip() + "\n", encoding="utf-8")
+    return Outcome("Summarized YouTube video", [dest])
+
+
+def _youtube_translate(files, options, work):
+    url = _opt(options, "url")
+    language = _opt(options, "language", "en") or "en"
+    source_language = _opt(options, "source_language", "auto") or "auto"
+    detailed = media.youtube_transcript(url, work / "yt", source_language)
+    text = (detailed.get("text") or "").strip()
+    if not text:
+        raise ValueError("Could not read captions or audio from that YouTube URL")
+    translation = ai.translate(text, language, source_language)
+    out_files = []
+    translation_path = work / "youtube-translation.txt"
+    translation_path.write_text(translation + "\n", encoding="utf-8")
+    out_files.append(translation_path)
+    segments = detailed.get("segments") or []
+    if segments:
+        translated_segments = _segments_to_translated(segments, language, source_language)
+        out_files.append(media.write_srt(translated_segments, work / "youtube-subtitles.srt"))
+    return Outcome("Translated YouTube video", out_files)
+
+
+def _image_privacy_check(files, options, work):
+    report, sensitive = images.privacy_report(_one(files))
+    dest = work / "privacy-report.txt"
+    dest.write_text(report, encoding="utf-8")
+    message = (
+        "Privacy metadata found. Open Remove Your Privacy to strip it."
+        if sensitive
+        else "Checked image privacy metadata."
+    )
+    return Outcome(message, [dest], meta={"privacy_sensitive": sensitive, "open_tool": "image_strip_exif" if sensitive else ""})
+
+
+def _youtube_download(files, options, work):
+    raise ValueError(
+        "We do not support downloading YouTube video from the server. "
+        "Use the Windows or mobile Download YouTube app on your personal device."
+    )
 
 
 def _zip_pack(files, options, work):
@@ -495,12 +612,18 @@ _DISPATCH = {
     "favicon": _favicon,
     # "youtube_mp4": _youtube_mp4,  # off website; use ytube-download app
     # "youtube_mp3": _youtube_mp3,
+    "video_translate": _video_translate,
+    "youtube_summarize": _youtube_summarize,
+    "youtube_translate": _youtube_translate,
+    "audio_translate": _audio_translate,
     "media_convert": _media_convert,
     "media_trim": _media_trim,
     "media_compress": _media_compress,
     "extract_audio": _extract_audio,
     "tts": _tts,
     "stt": _stt,
+    "youtube_download": _youtube_download,
+    "image_privacy_check": _image_privacy_check,
     "qr_generate": _qr,
     "qr_scan": _qr_scan,
     "barcode_generate": _barcode,

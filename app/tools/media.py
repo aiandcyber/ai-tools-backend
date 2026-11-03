@@ -730,18 +730,181 @@ async def _edge_tts_save(text: str, language: str, dest: Path) -> None:
     _concat_mp3(parts, dest)
 
 
-def speech_to_text(src: Path) -> str:
+def _whisper_language(language: str) -> str | None:
+    code = (language or "auto").strip().lower()
+    if code in {"", "auto", "detect"}:
+        return None
+    if code.startswith("zh") or code == "yue":
+        return "zh"
+    return code
+
+
+def speech_to_text_detailed(src: Path, language: str = "auto") -> dict:
+    """Transcribe audio via OpenRouter Whisper. Returns text + optional segments."""
     if not config.OPENROUTER_API_KEY:
         raise RuntimeError("OPENROUTER_API_KEY is not set")
+    data: dict[str, str] = {
+        "model": config.OPENROUTER_STT_MODEL,
+        "response_format": "verbose_json",
+    }
+    whisper_lang = _whisper_language(language)
+    if whisper_lang:
+        data["language"] = whisper_lang
     with src.open("rb") as handle:
         response = httpx.post(
             f"{config.OPENROUTER_BASE_URL}/audio/transcriptions",
             headers={"Authorization": f"Bearer {config.OPENROUTER_API_KEY}"},
             files={"file": (src.name, handle)},
-            data={"model": config.OPENROUTER_STT_MODEL},
-            timeout=180,
+            data=data,
+            timeout=300,
         )
     if response.status_code >= 400:
-        raise RuntimeError(response.text[:800])
+        # Some models reject verbose_json — fall back to plain text.
+        with src.open("rb") as handle:
+            plain = httpx.post(
+                f"{config.OPENROUTER_BASE_URL}/audio/transcriptions",
+                headers={"Authorization": f"Bearer {config.OPENROUTER_API_KEY}"},
+                files={"file": (src.name, handle)},
+                data={
+                    "model": config.OPENROUTER_STT_MODEL,
+                    **({"language": whisper_lang} if whisper_lang else {}),
+                },
+                timeout=300,
+            )
+        if plain.status_code >= 400:
+            raise RuntimeError(plain.text[:800])
+        payload = plain.json()
+        text = payload.get("text") or str(payload)
+        return {"text": text, "segments": [], "duration": 0.0}
     payload = response.json()
-    return payload.get("text") or str(payload)
+    text = payload.get("text") or ""
+    segments = []
+    for item in payload.get("segments") or []:
+        piece = (item.get("text") or "").strip()
+        if not piece:
+            continue
+        segments.append(
+            {
+                "start": float(item.get("start") or 0),
+                "end": float(item.get("end") or 0),
+                "text": piece,
+            }
+        )
+    return {
+        "text": text.strip() or " ".join(s["text"] for s in segments),
+        "segments": segments,
+        "duration": float(payload.get("duration") or 0),
+    }
+
+
+def speech_to_text(src: Path, language: str = "auto") -> str:
+    return speech_to_text_detailed(src, language).get("text") or ""
+
+
+def _srt_timestamp(seconds: float) -> str:
+    total_ms = max(0, int(round(float(seconds) * 1000)))
+    hours, rem = divmod(total_ms, 3_600_000)
+    minutes, rem = divmod(rem, 60_000)
+    secs, ms = divmod(rem, 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{ms:03d}"
+
+
+def write_srt(segments: list[dict], dest: Path) -> Path:
+    lines: list[str] = []
+    for index, item in enumerate(segments, start=1):
+        text = (item.get("text") or "").strip()
+        if not text:
+            continue
+        start = float(item.get("start") or 0)
+        end = float(item.get("end") or (start + 2))
+        if end <= start:
+            end = start + 1.5
+        lines.append(str(index))
+        lines.append(f"{_srt_timestamp(start)} --> {_srt_timestamp(end)}")
+        lines.append(text)
+        lines.append("")
+    dest.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
+    return dest
+
+
+def _vtt_to_plain(text: str) -> str:
+    lines: list[str] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("WEBVTT") or line.startswith("NOTE") or "-->" in line:
+            continue
+        if re.match(r"^\d+$", line):
+            continue
+        line = re.sub(r"<[^>]+>", "", line)
+        if line and (not lines or lines[-1] != line):
+            lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def youtube_transcript(url: str, work: Path, language: str = "auto") -> dict:
+    """Fetch YouTube captions when possible; otherwise download audio and transcribe."""
+    import yt_dlp
+
+    work.mkdir(parents=True, exist_ok=True)
+    target = _youtube_url(url)
+    preferred = []
+    mapped = _whisper_language(language)
+    if mapped:
+        preferred.extend([mapped, f"{mapped}-US", f"{mapped}-GB"])
+    preferred.extend(["en", "en-US", "en-GB"])
+
+    sub_opts = {
+        **_ydl_common(),
+        "skip_download": True,
+        "writesubtitles": True,
+        "writeautomaticsub": True,
+        "subtitleslangs": preferred,
+        "subtitlesformat": "vtt",
+        "outtmpl": str(work / "%(id)s"),
+    }
+    info = None
+    try:
+        with yt_dlp.YoutubeDL(sub_opts) as ydl:
+            info = ydl.extract_info(target, download=True)
+    except Exception as exc:
+        _log.warning("youtube caption fetch failed: %s", exc)
+
+    for path in sorted(work.glob("*.vtt")):
+        plain = _vtt_to_plain(path.read_text(encoding="utf-8", errors="replace"))
+        if plain:
+            return {
+                "text": plain,
+                "segments": [],
+                "title": (info or {}).get("title") or "",
+                "source": "captions",
+            }
+
+    audio = download_youtube_mp3(target, work, "128")
+    detailed = speech_to_text_detailed(audio, language)
+    detailed["title"] = (info or {}).get("title") or ""
+    detailed["source"] = "audio"
+    return detailed
+
+
+def mux_soft_subtitles(video: Path, srt: Path, dest: Path) -> Path:
+    """Attach SRT as soft subtitles when the container allows it."""
+    try:
+        _ffmpeg(
+            [
+                "-i",
+                str(video),
+                "-i",
+                str(srt),
+                "-c",
+                "copy",
+                "-c:s",
+                "mov_text",
+                "-metadata:s:s:0",
+                "language=und",
+                str(dest),
+            ]
+        )
+        return dest
+    except Exception:
+        # Fall back to returning the original video path unchanged.
+        return video

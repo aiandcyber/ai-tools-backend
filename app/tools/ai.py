@@ -72,6 +72,44 @@ def translate(text: str, language: str, source_language: str = "auto") -> str:
     return complete(system, text)
 
 
+def translate_lines(lines: list[str], language: str, source_language: str = "auto") -> list[str]:
+    """Translate subtitle/audio lines while preserving count and order."""
+    cleaned = [(line or "").strip() for line in lines]
+    if not any(cleaned):
+        return list(cleaned)
+    numbered = "\n".join(f"{index + 1}|{line}" for index, line in enumerate(cleaned))
+    target = LANG.get(language, language)
+    source = (source_language or "auto").strip().lower()
+    if source in {"", "auto", "detect"}:
+        system = (
+            f"Translate each line into {target}. Keep the same number of lines. "
+            "Keep the N| prefix exactly. Return only those lines."
+        )
+    else:
+        source_name = LANG.get(source, source_language)
+        system = (
+            f"Translate each line from {source_name} into {target}. "
+            "Keep the same number of lines. Keep the N| prefix exactly. Return only those lines."
+        )
+    raw = complete(system, numbered)
+    mapped: dict[int, str] = {}
+    for row in raw.splitlines():
+        row = row.strip()
+        if "|" not in row:
+            continue
+        left, right = row.split("|", 1)
+        if left.strip().isdigit():
+            mapped[int(left.strip())] = right.strip()
+    if len(mapped) == len(cleaned):
+        return [mapped.get(index + 1, cleaned[index]) for index in range(len(cleaned))]
+    # Fallback: one-shot whole-block translate, then best-effort split.
+    block = translate("\n".join(cleaned), language, source_language)
+    parts = [part.strip() for part in block.splitlines() if part.strip()]
+    if len(parts) == len(cleaned):
+        return parts
+    return [translate(line, language, source_language) if line else "" for line in cleaned]
+
+
 def rewrite(text: str, instruction: str) -> str:
     return complete(instruction or "Rewrite this more clearly.", text)
 

@@ -18,7 +18,6 @@ SKILLS_ROOT = Path(__file__).resolve().parent.parent / "skills"
 CATEGORY_SKILL = {
     "search": "search-tools",
     "pdf": "pdf-tools",
-    "office": "office-tools",
     "image": "image-tools",
     "media": "media-tools",
     "utility": "utility-tools",

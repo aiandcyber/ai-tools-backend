@@ -1,6 +1,6 @@
 ---
 name: pdf-tools
-description: PDF and document operations — merge, compress, create, Word-to-PDF, pages, protect, watermark, OCR, extract text/images, 3D-to-PDF.
+description: PDF operations — merge, compress, unlock/protect, OCR, pages, extract text/images, images to PDF, watermark.
 ---
 
 # PDF / Documents tools
@@ -14,14 +14,12 @@ description: PDF and document operations — merge, compress, create, Word-to-PD
 ## Common tool ids
 
 - `pdf_merge` — two or more PDFs
-- `pdf_compress` — options: `quality` (40–90)
-- `pdf_create` — options: `title`, `body`
-- `word_to_pdf` — needs `.docx`
-- `model_to_pdf` — STL/OBJ/PLY
-- `pdf_pages` — `action` split|rotate|reorder|delete; `pages`; `angle`
-- `pdf_protect` / `pdf_unlock` — password options
-- `pdf_watermark` — text watermark / page numbers
-- `pdf_extract_text`, `pdf_extract_images`, `pdf_ocr`
+- `pdf_compress`
+- `pdf_unlock` / `pdf_protect` — password options
+- `ocr` — Text From Scanned Doc (OCR)
+- `pdf_pages` — `action` split|rotate|reorder|delete; `pages`; `angle` only for rotate
+- `pdf_extract_text`, `pdf_extract_images`
 - `images_to_pdf`, `pdf_to_images`
+- `pdf_decorate` — Add Watermark into PDF (optional page numbers)
 
 Prefer the specialist tool that matches the user ask; do not claim success without a tool result.

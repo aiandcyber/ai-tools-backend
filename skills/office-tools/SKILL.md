@@ -1,17 +1,8 @@
 ---
 name: office-tools
-description: Create and convert Office files — DOCX, XLSX, PPTX, CSV, and merge Word / Excel / PowerPoint.
+description: Office tools were removed from the product catalog (3 Nov 2026). Do not offer Excel/Word/PowerPoint merge or convert tools.
 ---
 
-# Office tools
+# Office tools (removed)
 
-Use `run_office_tool` with the matching `tool_id`.
-
-## Common tool ids
-
-- `xlsx_merge` / `docx_merge` / `pptx_merge` — combine multiple files
-- Create XLSX / PPTX from text fields
-- Convert CSV ↔ XLSX
-- `docx_to_text` — Word to plain text or HTML
-
-Require uploads when the tool accepts files. Keep options_json valid JSON.
+The Office page and all Office catalog tools were removed. If a user asks for Office file work, say those tools are not available in Tools and suggest PDF tools where appropriate.

@@ -40,51 +40,30 @@ TOOLS: tuple[Tool, ...] = (
     Tool("pdf_protect", "pdf", "Protect PDF", "Encrypt a PDF with a password.", ".pdf", False, (
         _f("password", "Password", "text", required=True),
     )),
-    Tool("ocr", "pdf", "OCR", "Read text from a scanned PDF or image. Requires Tesseract in the container.", ".pdf,image/*", False),
-    Tool("model_to_pdf", "pdf", "3D to PDF", "Load an STL, OBJ, or PLY model and write a three-view PDF.", ".stl,.obj,.ply", False),
-    Tool("pdf_pages", "pdf", "Pages", "Split, rotate, reorder, or delete PDF pages.", ".pdf", False, (
+    Tool(
+        "ocr",
+        "pdf",
+        "Text From Scanned Doc (OCR)",
+        "Read text from a scanned PDF or image, Optical Character Recognition.",
+        ".pdf,image/*",
+        False,
+    ),
+    Tool("pdf_pages", "pdf", "Split, Reorder, Delete PDF Pages", "Split, rotate, reorder, or delete PDF pages.", ".pdf", False, (
         _f("action", "Action", "select", required=True, options=("split", "rotate", "reorder", "delete"), default="split"),
         _f("pages", "Pages (1,3 or 2-4 or new order 3,1,2)", "text", default=""),
         _f("angle", "Rotate degrees", "select", options=("90", "180", "270"), default="90"),
     )),
-    Tool("pdf_decorate", "pdf", "Page numbers and watermark", "Add a watermark and optional page numbers.", ".pdf", False, (
-        _f("watermark", "Watermark text", "text", default="CONFIDENTIAL"),
-        _f("page_numbers", "Page numbers", "select", options=("yes", "no"), default="yes"),
-    )),
-    Tool("pdf_extract_text", "pdf", "Extract text", "Extract the text from a PDF.", ".pdf", False),
-    Tool("pdf_extract_images", "pdf", "Extract images", "Extract embedded images from a PDF into a ZIP.", ".pdf", False),
+    Tool("pdf_extract_text", "pdf", "Extract PDF Text", "Extract the text from a PDF.", ".pdf", False),
+    Tool("pdf_extract_images", "pdf", "Extract PDF Images", "Extract embedded images from a PDF into a ZIP.", ".pdf", False),
     Tool("images_to_pdf", "pdf", "Images to PDF", "Place one or more images into a single PDF.", "image/*", True),
     Tool("pdf_to_images", "pdf", "PDF to images", "Render each PDF page to a PNG inside a ZIP.", ".pdf", False),
-    Tool("pdf_to_markdown", "pdf", "PDF to Markdown", "Turn extracted PDF text into a Markdown file.", ".pdf", False),
-    Tool("pdf_create", "pdf", "Create PDF", "Create a PDF from the title and text you enter.", "", False, (
-        _f("title", "Title", "text", required=True),
-        _f("body", "Text", "textarea", required=True),
-    )),
-    Tool("word_to_pdf", "pdf", "Word to PDF", "Convert a DOCX file to PDF. Requires LibreOffice in the container.", ".docx", False),
-    Tool("xlsx_merge", "office", "Merge Excel", "Copy the first sheet of each workbook into one workbook.", ".xlsx", True),
-    Tool("docx_merge", "office", "Merge Word", "Combine two or more Word files into one document, in upload order.", ".docx", True),
-    Tool("pptx_merge", "office", "Merge PowerPoint", "Combine slides from two or more presentations into one, in upload order.", ".pptx", True),
-    Tool("xlsx_create", "office", "Create Excel", "Create an XLSX workbook from CSV text.", "", False, (
-        _f("csv", "CSV text", "textarea", required=True),
-        _f("sheet", "Sheet name", "text", default="Sheet1"),
-    )),
-    Tool("csv_to_xlsx", "office", "CSV to Excel", "Convert a CSV file to XLSX.", ".csv,text/csv", False),
-    Tool("xlsx_to_csv", "office", "Excel to CSV", "Export the first worksheet to CSV.", ".xlsx", False),
-    Tool("pptx_create", "office", "Create PowerPoint", "Create slides from text. Separate slides with a line that contains only ---.", "", False, (
-        _f("slides", "Slide text", "textarea", required=True),
-    )),
-    Tool("docx_to_text", "office", "DOCX to text", "Convert a Word file to plain text or HTML.", ".docx", False, (
-        _f("format", "Format", "select", options=("text", "html"), default="text"),
+    Tool("pdf_decorate", "pdf", "Add Watermark into PDF", "Add a watermark and optional page numbers.", ".pdf", False, (
+        _f("watermark", "Watermark text", "text", default="CONFIDENTIAL"),
+        _f("page_numbers", "Page numbers", "select", options=("yes", "no"), default="yes"),
     )),
     Tool("image_compress", "image", "Compress image", "Re-save an image as JPEG or WebP at a lower quality.", "image/*", False, (
         _f("quality", "Quality (40-95)", "number", default="70"),
         _f("format", "Format", "select", options=("jpeg", "webp"), default="jpeg"),
-    )),
-    Tool("image_transform", "image", "Resize, crop, rotate", "Resize, crop, or rotate an image.", "image/*", False, (
-        _f("action", "Action", "select", options=("resize", "crop", "rotate"), default="resize"),
-        _f("width", "Width", "number", default=""),
-        _f("height", "Height", "number", default=""),
-        _f("angle", "Rotate degrees", "select", options=("90", "180", "270"), default="90"),
     )),
     Tool("image_convert", "image", "Convert image", "Convert between JPEG, PNG, WebP, BMP, and GIF.", "image/*", False, (
         _f("format", "Format", "select", required=True, options=("jpeg", "png", "webp", "bmp", "gif"), default="png"),
@@ -92,10 +71,30 @@ TOOLS: tuple[Tool, ...] = (
     Tool("image_watermark", "image", "Watermark image", "Draw text on an image.", "image/*", False, (
         _f("text", "Watermark", "text", required=True, default="DRAFT"),
     )),
-    Tool("image_strip_exif", "image", "Strip EXIF", "Save the image without EXIF or GPS metadata.", "image/*", False),
-    Tool("image_remove_bg", "image", "Remove background", "Remove the background. Uses rembg.", "image/*", False),
-    Tool("favicon", "image", "Favicon", "Build a multi-size ICO from an image.", "image/*", False),
-    Tool("palette", "image", "Color palette", "List the dominant colors in an image.", "image/*", False),
+    Tool(
+        "image_strip_exif",
+        "image",
+        "Remove Your Privacy",
+        "Remove privacy information such as your GPS location and other metadata from your image.",
+        "image/*",
+        False,
+    ),
+    Tool(
+        "image_remove_bg",
+        "image",
+        "Remove background",
+        "Remove the background of your image.",
+        "image/*",
+        False,
+    ),
+    Tool(
+        "favicon",
+        "image",
+        "Create Icon (Favicon)",
+        "Create multi-size icon from your image.",
+        "image/*",
+        False,
+    ),
     # YouTube MP4/MP3 moved to the on-device ytube-download app.
     # Tool("youtube_mp4", "media", "YouTube to MP4", "Download a YouTube video as MP4.", "", False, (
     #     _f("url", "YouTube URL", "text", required=True),
@@ -139,36 +138,13 @@ TOOLS: tuple[Tool, ...] = (
             _f("industry", "Profile industry", "text", default=""),
         ),
     ),
-    Tool("zip_pack", "utility", "Create ZIP", "Pack the uploaded files into one ZIP.", "*", True),
-    Tool("zip_extract", "utility", "Extract ZIP", "Extract a ZIP and pack the contents back into a new ZIP.", ".zip", False),
-    Tool("data_convert", "utility", "Convert data", "Convert between JSON, YAML, and CSV.", ".json,.yaml,.yml,.csv,.txt", False, (
-        _f("target", "Target", "select", required=True, options=("json", "yaml", "csv"), default="json"),
-        _f("text", "Or paste text", "textarea", default=""),
+    Tool("qr_scan", "utility", "Scan QR Code", "Read a QR code with the camera or from an image.", "image/*", False),
+    Tool("qr_generate", "utility", "Create QR Code", "Create a QR code PNG.", "", False, (
+        _f("text", "QR code", "text", required=True),
     )),
-    Tool("markdown_html", "utility", "Markdown to HTML", "Render Markdown to an HTML file.", ".md,.txt", False, (
-        _f("text", "Or paste Markdown", "textarea", default=""),
-    )),
-    Tool("markdown_pdf", "utility", "Markdown to PDF", "Render Markdown text into a PDF.", ".md,.txt", False, (
-        _f("text", "Or paste Markdown", "textarea", default=""),
-    )),
-    Tool("qr_generate", "utility", "QR code", "Create a QR code PNG.", "", False, (
-        _f("text", "Text", "text", required=True),
-    )),
-    Tool("qr_scan", "utility", "Scan QR", "Read a QR code from an image.", "image/*", False),
-    Tool("barcode_generate", "utility", "Barcode", "Create a Code128 barcode PNG.", "", False, (
-        _f("text", "Text", "text", required=True),
-    )),
-    Tool("barcode_scan", "utility", "Scan barcode", "Read a barcode from an image.", "image/*", False),
-    Tool("hash_text", "utility", "Hash", "Hash text or an uploaded file.", "*", False, (
-        _f("algorithm", "Algorithm", "select", options=("sha256", "sha512", "md5"), default="sha256"),
-        _f("text", "Or paste text", "textarea", default=""),
-    )),
-    Tool("base64_tool", "utility", "Base64", "Encode or decode text or a file.", "*", False, (
-        _f("action", "Action", "select", options=("encode", "decode"), default="encode"),
-        _f("text", "Or paste text", "textarea", default=""),
-    )),
-    Tool("uuid_tool", "utility", "UUID", "Generate a UUID.", "", False, (
-        _f("count", "How many", "number", default="1"),
+    Tool("barcode_scan", "utility", "Scan Barcode", "Read a barcode with the camera or from an image.", "image/*", False),
+    Tool("barcode_generate", "utility", "Create Barcode", "Create a Code128 barcode PNG.", "", False, (
+        _f("text", "Barcode", "text", required=True),
     )),
     Tool("text_diff", "utility", "Text diff", "Compare two pieces of text.", "", False, (
         _f("left", "Original", "textarea", required=True),
@@ -203,7 +179,6 @@ BY_ID = {item.id: item for item in TOOLS}
 CATEGORIES = (
     ("search", "Search"),
     ("pdf", "Documents / PDF"),
-    ("office", "Office"),
     ("image", "Images"),
     ("media", "Audio/Video"),
     ("utility", "Utilities"),

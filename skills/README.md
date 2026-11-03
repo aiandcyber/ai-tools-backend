@@ -9,7 +9,7 @@ Loaded by `app/agent.py` via `strands.vended_plugins.skills.AgentSkills`.
 | `tools-orchestrator` | Top-level multi-agent coordinator |
 | `search-tools` | Search specialist |
 | `pdf-tools` | PDF specialist |
-| `office-tools` | Office specialist |
+| `office-tools` | Removed from product (skill kept as guidance only) |
 | `image-tools` | Image specialist |
 | `media-tools` | Media specialist |
 | `utility-tools` | Utility specialist |

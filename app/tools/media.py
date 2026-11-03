@@ -101,6 +101,21 @@ def _youtube_url(url: str) -> str:
         raise ValueError("Paste a YouTube URL")
     if not _YOUTUBE_RE.search(text):
         raise ValueError("URL must be a YouTube link")
+    # Drop playlist/radio noise so we always operate on one video.
+    try:
+        from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
+        parsed = urlparse(text)
+        query = parse_qs(parsed.query)
+        keep = {}
+        if "v" in query:
+            keep["v"] = query["v"][0]
+        elif parsed.netloc.endswith("youtu.be") and parsed.path.strip("/"):
+            return f"https://www.youtube.com/watch?v={parsed.path.strip('/')}"
+        if keep:
+            text = urlunparse(parsed._replace(query=urlencode(keep), fragment=""))
+    except Exception:
+        pass
     return text
 
 
@@ -249,6 +264,10 @@ def _ydl_common() -> dict:
         "socket_timeout": 30,
         "force_ipv4": True,
     }
+    # yt-dlp 2025+ prefers a JS runtime for YouTube player JS.
+    node = shutil.which("node")
+    if node:
+        opts["js_runtimes"] = {"node": {"path": node}}
     cookiefile = _youtube_cookiefile()
     if cookiefile:
         opts["cookiefile"] = cookiefile
@@ -841,6 +860,45 @@ def _vtt_to_plain(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _pick_caption_tracks(info: dict, preferred: list[str]) -> list[tuple[str, str]]:
+    """Return (lang, url) pairs for VTT/SRV3 tracks, preferred langs first."""
+    tracks: list[tuple[str, str]] = []
+    for bag_name in ("subtitles", "automatic_captions"):
+        bag = info.get(bag_name) or {}
+        for lang in preferred:
+            for item in bag.get(lang) or []:
+                ext = (item.get("ext") or "").lower()
+                href = item.get("url") or ""
+                if href and ext in {"vtt", "srv3", "srv2", "ttml"}:
+                    tracks.append((lang, href))
+                    break
+        for lang, items in bag.items():
+            if lang in preferred:
+                continue
+            for item in items or []:
+                ext = (item.get("ext") or "").lower()
+                href = item.get("url") or ""
+                if href and ext in {"vtt", "srv3", "srv2", "ttml"}:
+                    tracks.append((lang, href))
+                    break
+    return tracks
+
+
+def _download_caption_text(url: str) -> str:
+    with httpx.Client(timeout=45.0, follow_redirects=True) as client:
+        response = client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+        if response.status_code == 429:
+            raise RuntimeError("YouTube rate-limited caption download (HTTP 429)")
+        if response.status_code >= 400:
+            raise RuntimeError(f"Caption download failed ({response.status_code})")
+        body = response.text
+    if "<" in body[:200] and "-->" not in body:
+        # srv3/json3-ish — strip tags roughly
+        plain = re.sub(r"<[^>]+>", " ", body)
+        return re.sub(r"\s+", " ", plain).strip()
+    return _vtt_to_plain(body)
+
+
 def youtube_transcript(url: str, work: Path, language: str = "auto") -> dict:
     """Fetch YouTube captions when possible; otherwise download audio and transcribe."""
     import yt_dlp
@@ -853,37 +911,49 @@ def youtube_transcript(url: str, work: Path, language: str = "auto") -> dict:
         preferred.extend([mapped, f"{mapped}-US", f"{mapped}-GB"])
     preferred.extend(["en", "en-US", "en-GB"])
 
-    sub_opts = {
-        **_ydl_common(),
-        "skip_download": True,
-        "writesubtitles": True,
-        "writeautomaticsub": True,
-        "subtitleslangs": preferred,
-        "subtitlesformat": "vtt",
-        "outtmpl": str(work / "%(id)s"),
-    }
     info = None
+    caption_error = ""
     try:
-        with yt_dlp.YoutubeDL(sub_opts) as ydl:
-            info = ydl.extract_info(target, download=True)
+        with yt_dlp.YoutubeDL({**_ydl_common(), "skip_download": True}) as ydl:
+            info = ydl.extract_info(target, download=False)
+        for _lang, href in _pick_caption_tracks(info or {}, preferred):
+            try:
+                plain = _download_caption_text(href)
+                if plain:
+                    return {
+                        "text": plain,
+                        "segments": [],
+                        "title": (info or {}).get("title") or "",
+                        "source": "captions",
+                    }
+            except Exception as exc:
+                caption_error = str(exc)
+                _log.warning("youtube caption URL fetch failed: %s", exc)
     except Exception as exc:
-        _log.warning("youtube caption fetch failed: %s", exc)
+        caption_error = str(exc)
+        _log.warning("youtube caption metadata failed: %s", exc)
 
-    for path in sorted(work.glob("*.vtt")):
-        plain = _vtt_to_plain(path.read_text(encoding="utf-8", errors="replace"))
-        if plain:
-            return {
-                "text": plain,
-                "segments": [],
-                "title": (info or {}).get("title") or "",
-                "source": "captions",
-            }
-
-    audio = download_youtube_mp3(target, work, "128")
-    detailed = speech_to_text_detailed(audio, language)
-    detailed["title"] = (info or {}).get("title") or ""
-    detailed["source"] = "audio"
-    return detailed
+    # Audio fallback (needs ffmpeg + often a JS runtime). Surface clear errors instead of hanging.
+    try:
+        audio = download_youtube_mp3(target, work, "128")
+        detailed = speech_to_text_detailed(audio, language)
+        detailed["title"] = (info or {}).get("title") or ""
+        detailed["source"] = "audio"
+        return detailed
+    except Exception as exc:
+        if is_youtube_block_error(exc) or "429" in str(exc):
+            raise RuntimeError(
+                "YouTube is rate-limiting or blocking this server right now. "
+                "Try again later, or use Download YouTube on your device."
+            ) from exc
+        if caption_error and ("429" in caption_error or "rate" in caption_error.lower()):
+            raise RuntimeError(
+                "YouTube captions are rate-limited (429) and audio download also failed. "
+                "Try again later."
+            ) from exc
+        raise RuntimeError(
+            f"Could not read captions or audio from that YouTube URL. {exc}"
+        ) from exc
 
 
 def mux_soft_subtitles(video: Path, srt: Path, dest: Path) -> Path:

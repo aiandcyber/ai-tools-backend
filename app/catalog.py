@@ -1,5 +1,7 @@
 from dataclasses import asdict, dataclass, field
 
+from app.upload_security import resolved_max_upload_bytes
+
 
 @dataclass(frozen=True)
 class Field:
@@ -20,10 +22,15 @@ class Tool:
     accept: str = ""
     multiple: bool = False
     fields: tuple[Field, ...] = field(default_factory=tuple)
+    # 0 = use category default from upload_security.CATEGORY_MAX_UPLOAD_BYTES
+    max_upload_bytes: int = 0
 
     def public(self) -> dict:
         data = asdict(self)
         data["fields"] = [asdict(item) for item in self.fields]
+        data["max_upload_bytes"] = resolved_max_upload_bytes(
+            self.id, self.category, self.max_upload_bytes
+        )
         return data
 
 

@@ -35,7 +35,20 @@ CORS_ORIGINS = [
 ]
 
 JOB_ROOT = Path(os.getenv("JOB_ROOT", "/tmp/ai-tools-jobs"))
+# Global fallback when a tool/category has no specific max (per-tool limits live in catalog / upload_security).
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(80 * 1024 * 1024)))
+# Optional override map: tool_id=bytes,tool_id=bytes
+_UPLOAD_OVERRIDES = {}
+for _pair in os.getenv("MAX_UPLOAD_BYTES_BY_TOOL", "").split(","):
+    _pair = _pair.strip()
+    if "=" not in _pair:
+        continue
+    _tid, _raw = _pair.split("=", 1)
+    try:
+        _UPLOAD_OVERRIDES[_tid.strip()] = int(_raw.strip())
+    except ValueError:
+        pass
+MAX_UPLOAD_BYTES_BY_TOOL: dict[str, int] = _UPLOAD_OVERRIDES
 SEARXNG_URL = os.getenv("SEARXNG_URL", "http://127.0.0.1:8080").rstrip("/")
 SEARCH_DEFAULT_REGION = os.getenv("SEARCH_DEFAULT_REGION", "SG").strip().upper() or "SG"
 # When set, /api/search is served by the slim Search API (ai-tools/search), not this process.

@@ -12,10 +12,11 @@ from fastapi.responses import FileResponse, StreamingResponse
 from app import config
 from app.agent import CHAT_DOWNLOADS, CHAT_FILES, build_orchestrator, resolve_llm_provider
 from app.auth import check_auth, tool_requires_auth
-from app.catalog import CATEGORIES, TOOLS
+from app.catalog import BY_ID, CATEGORIES, TOOLS
 from app.mail import send_feedback
 from app.turnstile import verify_turnstile
 from app.runner import export_text, run_tool
+from app import upload_security
 from app.workspace import publish, resolve_download
 
 app = FastAPI(title="AI-for All Tools")
@@ -89,7 +90,17 @@ def list_tools() -> dict:
 
 @app.post("/api/tools/{tool_id}")
 async def execute_tool(tool_id: str, request: Request):
-    options, saved = await _read_form(request)
+    tool = BY_ID.get(tool_id)
+    if tool is None:
+        raise HTTPException(status_code=404, detail="Unknown tool")
+    options, saved = await _read_form(
+        request,
+        accept=tool.accept,
+        max_bytes=upload_security.resolved_max_upload_bytes(
+            tool.id, tool.category, tool.max_upload_bytes
+        ),
+        category=tool.category,
+    )
     if tool_requires_auth(tool_id, options):
         check_auth(request)
     try:
@@ -108,11 +119,57 @@ async def execute_tool(tool_id: str, request: Request):
 
             raise HTTPException(status_code=400, detail=media_tool.youtube_public_error(exc)) from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        # Inputs stay only for the job; delete quarantine copies after processing.
+        for path in saved:
+            upload_security.delete_quietly(path)
     return {
         "message": outcome.message,
         "downloads": [publish(item) for item in outcome.files],
         "results": outcome.results,
         "meta": outcome.meta,
+    }
+
+
+@app.post("/api/upload/basic-scan")
+async def upload_basic_scan(request: Request):
+    """Basic type/size/virus gate for the shared upload module (no long-term store)."""
+    form = await request.form()
+    accept = str(form.get("accept") or "*/*")
+    category = str(form.get("category") or "ai")
+    tool_id = str(form.get("tool_id") or "")
+    try:
+        max_bytes = int(form.get("max_bytes") or 0)
+    except ValueError:
+        max_bytes = 0
+    if max_bytes <= 0:
+        max_bytes = upload_security.resolved_max_upload_bytes(tool_id, category, 0)
+    upload = form.get("file")
+    if not upload or not getattr(upload, "filename", None):
+        raise HTTPException(status_code=400, detail="Need a file")
+    data = await upload.read()
+    result = upload_security.gate_upload(
+        filename=str(upload.filename),
+        content_type=str(getattr(upload, "content_type", "") or ""),
+        data=data,
+        accept=accept,
+        max_bytes=max_bytes,
+    )
+    if not result.ok:
+        status = 413 if result.stage == "size" else 400
+        raise HTTPException(status_code=status, detail=result.detail or "Upload rejected")
+    # Optional ClamAV after a temp quarantine write.
+    try:
+        path = upload_security.write_quarantine(data, str(upload.filename))
+        upload_security.delete_quietly(path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "ok": True,
+        "stage": "ready",
+        "size": len(data),
+        "max_bytes": max_bytes,
+        "labels": result.labels or [],
     }
 
 
@@ -198,6 +255,46 @@ async def search_people_reject(request: Request):
     if not config.SEARCH_API_URL:
         raise HTTPException(status_code=503, detail="Search API is not configured")
     return _search_api_post("/api/search/people/reject", body)
+
+
+@app.post("/api/counsel")
+async def counsel_proxy(request: Request):
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Expected JSON body") from exc
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Expected JSON object")
+    if not config.SEARCH_API_URL:
+        raise HTTPException(status_code=503, detail="Search API is not configured")
+    return _search_api_post("/api/counsel", body)
+
+
+@app.post("/api/knowledge/ingest")
+async def knowledge_ingest_proxy(request: Request):
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Expected JSON body") from exc
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Expected JSON object")
+    if not config.SEARCH_API_URL:
+        raise HTTPException(status_code=503, detail="Search API is not configured")
+    return _search_api_post("/api/knowledge/ingest", body)
+
+
+@app.post("/api/knowledge/bootstrap")
+def knowledge_bootstrap_proxy():
+    if not config.SEARCH_API_URL:
+        raise HTTPException(status_code=503, detail="Search API is not configured")
+    return _search_api_post("/api/knowledge/bootstrap", {})
+
+
+@app.get("/api/knowledge/sources")
+def knowledge_sources_proxy():
+    if not config.SEARCH_API_URL:
+        raise HTTPException(status_code=503, detail="Search API is not configured")
+    return _search_api_get("/api/knowledge/sources")
 
 
 @app.get("/api/search/regions")
@@ -445,7 +542,13 @@ def download(token: str, name: str):
     return FileResponse(path, filename=path.name)
 
 
-async def _read_form(request: Request) -> tuple[dict, list[Path]]:
+async def _read_form(
+    request: Request,
+    *,
+    accept: str = "*/*",
+    max_bytes: int | None = None,
+    category: str = "ai",
+) -> tuple[dict, list[Path]]:
     form = await request.form()
     options: dict[str, str] = {}
     uploads = []
@@ -454,18 +557,31 @@ async def _read_form(request: Request) -> tuple[dict, list[Path]]:
             uploads.append(value)
         else:
             options[key] = str(value)
-    return options, await _save_uploads(uploads)
+    limit = max_bytes if max_bytes and max_bytes > 0 else upload_security.resolved_max_upload_bytes(
+        "", category, 0
+    )
+    return options, await _save_uploads(uploads, accept=accept, max_bytes=limit)
 
 
-async def _save_uploads(files) -> list[Path]:
+async def _save_uploads(files, *, accept: str = "*/*", max_bytes: int) -> list[Path]:
     saved: list[Path] = []
-    work = config.JOB_ROOT / "incoming"
-    work.mkdir(parents=True, exist_ok=True)
     for upload in files:
         data = await upload.read()
-        if len(data) > config.MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail="File is too large")
-        dest = work / f"{uuid.uuid4().hex}-{Path(upload.filename).name}"
-        dest.write_bytes(data)
+        filename = str(getattr(upload, "filename", None) or "upload.bin")
+        content_type = str(getattr(upload, "content_type", None) or "")
+        result = upload_security.gate_upload(
+            filename=filename,
+            content_type=content_type,
+            data=data,
+            accept=accept,
+            max_bytes=max_bytes,
+        )
+        if not result.ok:
+            status = 413 if result.stage == "size" else 400
+            raise HTTPException(status_code=status, detail=result.detail or "Upload rejected")
+        try:
+            dest = upload_security.write_quarantine(data, filename)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         saved.append(dest)
     return saved

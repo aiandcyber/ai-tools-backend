@@ -264,7 +264,11 @@ def pdf_to_images(src: Path, out_dir: Path) -> list[Path]:
     return saved
 
 
-def ocr_file(src: Path) -> str:
+def _tesseract_available() -> bool:
+    return shutil.which("tesseract") is not None
+
+
+def _ocr_with_tesseract(src: Path) -> str:
     import pytesseract
     from PIL import Image
 
@@ -281,6 +285,41 @@ def ocr_file(src: Path) -> str:
             doc.close()
         return "\n\n".join(chunks)
     return pytesseract.image_to_string(Image.open(src), lang=lang)
+
+
+def _ocr_with_vision(src: Path) -> str:
+    from app.tools import ai as ai_tool
+
+    if src.suffix.lower() == ".pdf":
+        doc = pymupdf.open(src)
+        chunks: list[str] = []
+        try:
+            for index, page in enumerate(doc, start=1):
+                pixmap = page.get_pixmap(matrix=pymupdf.Matrix(2, 2), alpha=False)
+                image_path = src.with_name(f"{src.stem}-ocr-page-{index}.png")
+                pixmap.save(image_path)
+                try:
+                    text = ai_tool.read_image_text(image_path).strip()
+                finally:
+                    image_path.unlink(missing_ok=True)
+                if text:
+                    chunks.append(f"# Page {index}\n\n{text}")
+        finally:
+            doc.close()
+        return "\n\n".join(chunks)
+    return ai_tool.read_image_text(src)
+
+
+def ocr_file(src: Path) -> str:
+    """OCR a PDF or image. Uses tesseract when installed; otherwise a vision model."""
+    if _tesseract_available():
+        try:
+            text = _ocr_with_tesseract(src)
+            if (text or "").strip():
+                return text
+        except Exception:
+            pass
+    return _ocr_with_vision(src)
 
 
 def pdf_to_markdown(src: Path) -> str:

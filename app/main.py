@@ -16,7 +16,7 @@ from app.catalog import BY_ID, CATEGORIES, TOOLS
 from app.mail import send_feedback
 from app.turnstile import verify_turnstile
 from app.runner import export_text, run_tool
-from app import upload_security
+from app import jobs, upload_security
 from app.workspace import publish, resolve_download
 
 app = FastAPI(title="AI-for All Tools")
@@ -103,10 +103,27 @@ async def execute_tool(tool_id: str, request: Request):
     )
     if tool_requires_auth(tool_id, options):
         check_auth(request)
+    client_job = str(options.pop("job_id", "") or "").strip() or None
+    job = jobs.create_job(tool_id, client_job)
+    task = asyncio.create_task(asyncio.to_thread(run_tool, tool_id, saved, options, job.cancel))
+    outcome = None
     try:
-        outcome = await asyncio.to_thread(run_tool, tool_id, saved, options)
+        while not task.done():
+            if await request.is_disconnected() or job.cancel.is_set():
+                job.cancel.set()
+            await asyncio.sleep(0.15)
+        try:
+            outcome = task.result()
+        except RuntimeError as exc:
+            if "Cancelled" in str(exc) or job.cancel.is_set():
+                raise HTTPException(status_code=499, detail="Cancelled") from exc
+            raise
+        if job.cancel.is_set():
+            raise HTTPException(status_code=499, detail="Cancelled")
     except KeyError:
         raise HTTPException(status_code=404, detail="Unknown tool") from None
+    except HTTPException:
+        raise
     except Exception as exc:
         if tool_id == "tts":
             logging.getLogger("uvicorn.error").exception(
@@ -118,17 +135,28 @@ async def execute_tool(tool_id: str, request: Request):
             from app.tools import media as media_tool
 
             raise HTTPException(status_code=400, detail=media_tool.youtube_public_error(exc)) from exc
+        if job.cancel.is_set() or "Cancelled" in str(exc):
+            raise HTTPException(status_code=499, detail="Cancelled") from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
-        # Inputs stay only for the job; delete quarantine copies after processing.
+        jobs.finish_job(job.id)
         for path in saved:
             upload_security.delete_quietly(path)
     return {
         "message": outcome.message,
         "downloads": [publish(item) for item in outcome.files],
         "results": outcome.results,
-        "meta": outcome.meta,
+        "meta": {**outcome.meta, "job_id": job.id},
+        "job_id": job.id,
     }
+
+
+@app.post("/api/jobs/{job_id}/cancel")
+async def cancel_tool_job(job_id: str):
+    if not jobs.cancel_job(job_id):
+        # Still OK — client abort alone cancels via disconnect.
+        return {"ok": True, "job_id": job_id, "cancelled": True}
+    return {"ok": True, "job_id": job_id, "cancelled": True}
 
 
 @app.post("/api/upload/basic-scan")
@@ -450,13 +478,17 @@ async def chat(request: Request, _: None = Depends(check_auth)):
 async def stt_api(request: Request, _: None = Depends(check_auth)):
     _options, saved = await _read_form(request)
     if not saved:
-        raise HTTPException(status_code=400, detail="Audio is required")
+        raise HTTPException(status_code=400, detail="Could not hear audio. Try Voice again.")
     from app.tools import media as media_tool
 
     try:
         text = await asyncio.to_thread(media_tool.speech_to_text, saved[0])
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        detail = str(exc)
+        lower = detail.lower()
+        if any(token in lower for token in ("traceback", "openrouter", "api key", "httpx", "status code", "{")):
+            detail = "Could not hear that. Try Voice again."
+        raise HTTPException(status_code=502, detail=detail) from exc
     return {"text": text}
 
 

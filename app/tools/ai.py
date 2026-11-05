@@ -51,6 +51,47 @@ def complete(system: str, user: str) -> str:
     return response.json()["choices"][0]["message"]["content"]
 
 
+def read_image_text(src: Path) -> str:
+    """Read printed or handwritten text from an image via a vision model."""
+    import base64
+
+    if not config.OPENROUTER_API_KEY:
+        raise RuntimeError("OPENROUTER_API_KEY is not set")
+    suffix = src.suffix.lower()
+    mime = "image/png" if suffix == ".png" else "image/jpeg" if suffix in {".jpg", ".jpeg"} else "image/png"
+    encoded = base64.b64encode(src.read_bytes()).decode("ascii")
+    response = httpx.post(
+        f"{config.OPENROUTER_BASE_URL}/chat/completions",
+        headers={"Authorization": f"Bearer {config.OPENROUTER_API_KEY}"},
+        json={
+            "model": config.OPENROUTER_VISION_MODEL or config.OPENROUTER_MODEL,
+            "max_tokens": 1024,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                "Read all handwriting and printed text in this image. "
+                                "Return only the transcribed text, with no commentary."
+                            ),
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime};base64,{encoded}"},
+                        },
+                    ],
+                }
+            ],
+        },
+        timeout=180,
+    )
+    if response.status_code >= 400:
+        raise RuntimeError(response.text[:800])
+    return (response.json()["choices"][0]["message"]["content"] or "").strip()
+
+
 def summarize(text: str) -> str:
     return complete("Summarize the user's document in concise Markdown.", text)
 

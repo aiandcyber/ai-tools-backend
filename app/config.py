@@ -9,6 +9,8 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/auto").strip()
 OPENROUTER_STT_MODEL = os.getenv("OPENROUTER_STT_MODEL", "openai/whisper-1").strip()
+# Vision-capable model for handwriting / image OCR when tesseract is unavailable.
+OPENROUTER_VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", "google/gemini-2.5-flash").strip()
 
 # LLM routing: auto | openrouter | gemini
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "auto").strip().lower() or "auto"

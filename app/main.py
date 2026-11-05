@@ -313,6 +313,48 @@ async def search_people_reject(request: Request):
     return _search_api_post("/api/search/people/reject", body)
 
 
+@app.post("/api/biometrics/enroll")
+async def biometrics_enroll_proxy(request: Request):
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Expected JSON body") from exc
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Expected JSON object")
+    _gate_search_access(request, body)
+    if not config.SEARCH_API_URL:
+        raise HTTPException(status_code=503, detail="Search API is not configured")
+    return _search_api_post("/api/biometrics/enroll", body)
+
+
+@app.post("/api/biometrics/search")
+async def biometrics_search_proxy(request: Request):
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Expected JSON body") from exc
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Expected JSON object")
+    _gate_search_access(request, body)
+    if not config.SEARCH_API_URL:
+        raise HTTPException(status_code=503, detail="Search API is not configured")
+    return _search_api_post("/api/biometrics/search", body)
+
+
+@app.post("/api/vision/search")
+async def vision_search_proxy(request: Request):
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Expected JSON body") from exc
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Expected JSON object")
+    _gate_search_access(request, body)
+    if not config.SEARCH_API_URL:
+        raise HTTPException(status_code=503, detail="Search API is not configured")
+    return _search_api_post("/api/vision/search", body)
+
+
 @app.post("/api/counsel")
 async def counsel_proxy(request: Request):
     try:

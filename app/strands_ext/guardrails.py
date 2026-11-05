@@ -1,7 +1,6 @@
 """Application guardrails using Strands InterventionHandler.
 
-Bedrock Guardrail IDs (optional) can also be set via env for AWS Bedrock models.
-These local interventions work with OpenRouter and are always on for demos.
+Local interventions work with OpenRouter and are always on for demos.
 """
 
 from __future__ import annotations
@@ -106,5 +105,4 @@ GUARDRAIL_RULES = [
     "Block prompt-injection / jailbreak patterns",
     "Block prompts that look like pasted API secrets",
     "Allowlist specialist, skills, run_* and MCP catalog tools only",
-    "Optional: set BEDROCK_GUARDRAIL_ID + BEDROCK_GUARDRAIL_VERSION when using Bedrock models",
 ]

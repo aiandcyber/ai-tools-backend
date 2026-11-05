@@ -16,7 +16,7 @@ Call `run_search_tool` with:
 
 - `tool_id`: `web_search`
 - `options_json` example:
-  `{"query":"Amirtharaj thankaraj","mode":"person","region":"SG","language":"en","interests":"","industry":"","location":""}`
+  `{"query":"Amirtharaj thankaraj","mode":"person","region":"HK","language":"en","interests":"","industry":"","location":""}`
 
 ### Modes
 
@@ -26,7 +26,7 @@ Call `run_search_tool` with:
 
 ### Regions
 
-`SG`, `IN`, `MY`, `US`, `GB`, `AU`, `GLOBAL` (default `SG`)
+`HK`, `CN`, `IN`, `US`, `OTHER` (default `HK`). Legacy codes such as `SG` / `GLOBAL` map to `OTHER`.
 
 ## Limitations (TODO)
 

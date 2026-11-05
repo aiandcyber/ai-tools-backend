@@ -52,7 +52,7 @@ for _pair in os.getenv("MAX_UPLOAD_BYTES_BY_TOOL", "").split(","):
         pass
 MAX_UPLOAD_BYTES_BY_TOOL: dict[str, int] = _UPLOAD_OVERRIDES
 SEARXNG_URL = os.getenv("SEARXNG_URL", "http://127.0.0.1:8080").rstrip("/")
-SEARCH_DEFAULT_REGION = os.getenv("SEARCH_DEFAULT_REGION", "SG").strip().upper() or "SG"
+SEARCH_DEFAULT_REGION = os.getenv("SEARCH_DEFAULT_REGION", "HK").strip().upper() or "HK"
 # When set, /api/search is served by the slim Search API (ai-tools/search), not this process.
 SEARCH_API_URL = os.getenv("SEARCH_API_URL", "").rstrip("/")
 

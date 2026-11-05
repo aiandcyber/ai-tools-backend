@@ -46,7 +46,7 @@ docker run --rm -p 8000:8000 --env-file .env ai-tools-backend
 | `OPENROUTER_API_KEY` | Assistant + AI tools |
 | `CORS_ORIGINS` | Must include `https://tools.ai-forall.org` |
 | `SEARXNG_URL` | Shared SearXNG base URL (not localhost in prod) |
-| `SEARCH_DEFAULT_REGION` | e.g. `SG` (pilot ranking table; product regions are HK/CN/IN/US/OTHER) |
+| `SEARCH_DEFAULT_REGION` | Product region default: `HK` (also `CN` / `IN` / `US` / `OTHER`) |
 | `AUTH_REQUIRED` | `false` until Auth0 is enforced for LLM tools |
 | `AUTH0_DOMAIN` / `AUTH0_AUDIENCE` | Auth0 tenant; same audience for user JWTs and M2M app tokens |
 | `TURNSTILE_SECRET` / `TURNSTILE_HOSTNAMES` | Casual search + contact form bot check |

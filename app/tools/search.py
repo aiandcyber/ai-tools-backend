@@ -18,21 +18,32 @@ import httpx
 
 from app import config
 
+# Product regions (same set as Senior): HK, China, India, USA, Other.
 REGION_PROFILES: dict[str, dict] = {
-    "SG": {
-        "label": "Singapore",
-        "language": "en",
-        "tlds": (".sg", ".com.sg", ".edu.sg", ".gov.sg"),
+    "HK": {
+        "label": "Hong Kong",
+        "language": "zh",
+        "tlds": (".hk", ".com.hk", ".gov.hk", ".edu.hk"),
         "hosts": (
-            "straitstimes.com",
-            "channelnewsasia.com",
-            "todayonline.com",
-            "businesstimes.com.sg",
-            "mothership.sg",
-            "gov.sg",
+            "scmp.com",
+            "hongkongfp.com",
+            "rthk.hk",
+            "gov.hk",
             "linkedin.com",
         ),
-        "tokens": ("singapore", "singapura", "sg"),
+        "tokens": ("hong kong", "hongkong", "hk", "香港"),
+    },
+    "CN": {
+        "label": "China",
+        "language": "zh",
+        "tlds": (".cn", ".com.cn", ".gov.cn", ".edu.cn"),
+        "hosts": (
+            "xinhuanet.com",
+            "people.com.cn",
+            "chinadaily.com.cn",
+            "linkedin.com",
+        ),
+        "tokens": ("china", "chinese", "prc", "中国", "中國"),
     },
     "IN": {
         "label": "India",
@@ -48,41 +59,40 @@ REGION_PROFILES: dict[str, dict] = {
         ),
         "tokens": ("india", "indian", "bharat"),
     },
-    "MY": {
-        "label": "Malaysia",
-        "language": "en",
-        "tlds": (".my", ".com.my", ".gov.my", ".edu.my"),
-        "hosts": ("thestar.com.my", "malaymail.com", "nst.com.my", "linkedin.com"),
-        "tokens": ("malaysia", "malaysian", "kuala lumpur"),
-    },
     "US": {
-        "label": "United States",
+        "label": "USA",
         "language": "en",
         "tlds": (".us", ".gov", ".edu", ".mil"),
         "hosts": ("nytimes.com", "washingtonpost.com", "cnn.com", "linkedin.com"),
         "tokens": ("united states", "usa", "american"),
     },
-    "GB": {
-        "label": "United Kingdom",
-        "language": "en",
-        "tlds": (".uk", ".co.uk", ".gov.uk", ".ac.uk", ".org.uk"),
-        "hosts": ("bbc.co.uk", "theguardian.com", "telegraph.co.uk", "linkedin.com"),
-        "tokens": ("united kingdom", "britain", "british", "england", "london"),
-    },
-    "AU": {
-        "label": "Australia",
-        "language": "en",
-        "tlds": (".au", ".com.au", ".gov.au", ".edu.au"),
-        "hosts": ("abc.net.au", "smh.com.au", "theage.com.au", "linkedin.com"),
-        "tokens": ("australia", "australian", "sydney", "melbourne"),
-    },
-    "GLOBAL": {
-        "label": "Global",
+    "OTHER": {
+        "label": "Other",
         "language": "en",
         "tlds": (),
         "hosts": (),
         "tokens": (),
     },
+}
+
+# Map legacy pilot codes / free-text aliases → product regions.
+REGION_INPUT_ALIAS = {
+    "HONG KONG": "HK",
+    "HONGKONG": "HK",
+    "HONG-KONG": "HK",
+    "CHINA": "CN",
+    "PRC": "CN",
+    "INDIA": "IN",
+    "USA": "US",
+    "UNITED STATES": "US",
+    "GLOBAL": "OTHER",
+    "WORLD": "OTHER",
+    "WW": "OTHER",
+    "SG": "OTHER",
+    "MY": "OTHER",
+    "GB": "OTHER",
+    "UK": "OTHER",
+    "AU": "OTHER",
 }
 
 PERSON_CATEGORIES = ("general", "social media", "news", "science")
@@ -246,12 +256,15 @@ def _resolve_mode(query: str, mode: str) -> str:
 
 def _resolve_region(region: str) -> str:
     code = (region or "").strip().upper()
-    if code in {"", "AUTO", "ALL", "WORLD", "WW", "NONE"}:
-        return "GLOBAL"
+    if code in {"", "AUTO", "ALL", "NONE"}:
+        return "OTHER"
     if code in REGION_PROFILES:
         return code
-    # Free-text / unknown country codes: keep global ranking, use location for query bias.
-    return "GLOBAL"
+    mapped = REGION_INPUT_ALIAS.get(code)
+    if mapped:
+        return mapped
+    # Unknown codes / free-text: Other ranking; location still biases the query.
+    return "OTHER"
 
 
 def _split_csv(value: str) -> list[str]:

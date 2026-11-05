@@ -22,11 +22,16 @@ class Outcome:
         self.meta = meta or {}
 
 
-def run_tool(tool_id: str, files: list[Path], options: dict) -> Outcome:
+def run_tool(tool_id: str, files: list[Path], options: dict, cancel_event=None) -> Outcome:
     if tool_id not in BY_ID:
         raise KeyError(tool_id)
+    if cancel_event is not None and cancel_event.is_set():
+        raise RuntimeError("Cancelled")
     work = Path(tempfile.mkdtemp(prefix="aitool-"))
-    return _DISPATCH[tool_id](files, options, work)
+    outcome = _DISPATCH[tool_id](files, options, work)
+    if cancel_event is not None and cancel_event.is_set():
+        raise RuntimeError("Cancelled")
+    return outcome
 
 
 def _one(files: list[Path]) -> Path:
@@ -633,7 +638,7 @@ _DISPATCH = {
     "web_search": _web_search,
     "summarize": _summarize,
     "translate": _translate,
-    "rewrite": _rewrite,
     "generate_document": _generate,
-    "classify": _classify,
+    # "rewrite": _rewrite,  # removed from website catalog
+    # "classify": _classify,
 }

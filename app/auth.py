@@ -6,31 +6,31 @@ from app import config
 LLM_TOOL_IDS = frozenset({
     "summarize",
     "translate",
-    "rewrite",
     "generate_document",
-    "classify",
     "stt",
+    "video_translate",
+    "audio_translate",
+    "youtube_summarize",
+    "youtube_translate",
 })
 
 
-def check_auth(request: Request) -> None:
-    """Validate Bearer JWT when AUTH_REQUIRED is on. No-op when auth is off."""
-    if not config.AUTH_REQUIRED:
-        return
+def _auth0_domain() -> str:
+    return config.AUTH0_DOMAIN.replace("https://", "").rstrip("/")
+
+
+def decode_auth0_bearer(token: str) -> dict:
+    """Validate an Auth0 access token (user login or M2M client-credentials)."""
     if not config.AUTH0_DOMAIN or not config.AUTH0_AUDIENCE:
         raise HTTPException(status_code=500, detail="Auth0 is required but not configured")
-    header = request.headers.get("authorization", "")
-    if not header.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="Sign in required")
-    token = header.split(" ", 1)[1]
     import jwt
     from jwt import PyJWKClient
 
-    domain = config.AUTH0_DOMAIN.replace("https://", "").rstrip("/")
+    domain = _auth0_domain()
     jwks = PyJWKClient(f"https://{domain}/.well-known/jwks.json")
     try:
         signing_key = jwks.get_signing_key_from_jwt(token)
-        jwt.decode(
+        return jwt.decode(
             token,
             signing_key.key,
             algorithms=["RS256"],
@@ -39,6 +39,38 @@ def check_auth(request: Request) -> None:
         )
     except Exception as exc:
         raise HTTPException(status_code=401, detail="Invalid token") from exc
+
+
+def bearer_token(request: Request) -> str | None:
+    header = request.headers.get("authorization", "")
+    if not header.lower().startswith("bearer "):
+        return None
+    token = header.split(" ", 1)[1].strip()
+    return token or None
+
+
+def try_auth0_claims(request: Request) -> dict | None:
+    """Return Auth0 claims when a Bearer token is present and valid.
+
+    No Authorization header → None (caller may treat as anonymous).
+    Invalid / missing Auth0 config with a Bearer present → 401/500.
+    """
+    token = bearer_token(request)
+    if not token:
+        return None
+    return decode_auth0_bearer(token)
+
+
+def check_auth(request: Request) -> None:
+    """Validate Bearer JWT when AUTH_REQUIRED is on. No-op when auth is off."""
+    if not config.AUTH_REQUIRED:
+        return
+    if not config.AUTH0_DOMAIN or not config.AUTH0_AUDIENCE:
+        raise HTTPException(status_code=500, detail="Auth0 is required but not configured")
+    token = bearer_token(request)
+    if not token:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    decode_auth0_bearer(token)
 
 
 def tool_requires_auth(tool_id: str, options: dict | None = None) -> bool:

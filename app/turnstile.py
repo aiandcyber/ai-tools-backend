@@ -16,7 +16,7 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else ""
 
 
-def verify_turnstile(request: Request, token: str) -> None:
+def verify_turnstile(request: Request, token: str, *, expected_action: str | None = None) -> None:
     """Fail closed when TURNSTILE_SECRET is set. Skip when it is not configured."""
     if not config.TURNSTILE_SECRET:
         return
@@ -49,5 +49,13 @@ def verify_turnstile(request: Request, token: str) -> None:
         return
     action = str(result.get("action") or "")
     hostname = str(result.get("hostname") or "")
-    if action != config.TURNSTILE_ACTION or hostname not in config.TURNSTILE_HOSTNAMES:
+    wanted = (expected_action or config.TURNSTILE_ACTION or "").strip()
+    allowed = set(config.TURNSTILE_ACTIONS) if config.TURNSTILE_ACTIONS else {wanted}
+    if wanted:
+        allowed.add(wanted)
+    if action not in allowed or hostname not in config.TURNSTILE_HOSTNAMES:
         raise HTTPException(status_code=403, detail="Could not verify you are human. Try again.")
+
+
+def client_ip(request: Request) -> str:
+    return _client_ip(request)

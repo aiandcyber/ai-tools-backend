@@ -31,11 +31,11 @@ env/
 # MCP generated local config (regenerated at runtime)
 mcp_servers/mcp.json
 
-# Deploy secrets (never commit)
-deploy/secrets.json
-
 # Test / coverage
 .coverage
 htmlcov/
 dist/
 build/
+
+# Local secrets (never commit)
+.secrets/

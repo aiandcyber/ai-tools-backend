@@ -39,6 +39,30 @@ def _f(name: str, label: str, kind: str, **kwargs) -> Field:
 
 
 TOOLS: tuple[Tool, ...] = (
+    Tool(
+        "summarize",
+        "pdf",
+        "Summarize Text",
+        "Summarize pasted text or an uploaded PDF, DOCX, or text file.",
+        ".pdf,.docx,.txt,.md",
+        False,
+        (
+            _f("text", "Or paste text", "textarea", default=""),
+        ),
+    ),
+    Tool(
+        "translate",
+        "pdf",
+        "Translate Text",
+        "Translate pasted text or an uploaded document.",
+        ".pdf,.docx,.txt,.md",
+        False,
+        (
+            _f("source_language", "From language", "select", options=("auto", "en", "yue", "zh", "ta", "hi", "ml", "kn", "te"), default="auto"),
+            _f("language", "Target language", "select", options=("en", "yue", "zh", "ta", "hi", "ml", "kn", "te"), default="en"),
+            _f("text", "Or paste text", "textarea", default=""),
+        ),
+    ),
     Tool("pdf_merge", "pdf", "Combine PDFs", "Merge two or more PDF files into one, in the order uploaded.", ".pdf", True),
     Tool("pdf_compress", "pdf", "Compress PDF", "Reduce PDF file size. Output stays a PDF.", ".pdf", False),
     Tool("pdf_unlock", "pdf", "Unlock PDF", "Remove a PDF password.", ".pdf", False, (
@@ -68,6 +92,19 @@ TOOLS: tuple[Tool, ...] = (
         _f("watermark", "Watermark text", "text", default="CONFIDENTIAL"),
         _f("page_numbers", "Page numbers", "select", options=("yes", "no"), default="yes"),
     )),
+    Tool(
+        "generate_document",
+        "pdf",
+        "Generate PPTX, DOCX, PDF",
+        "Draft a PDF, DOCX, or PPTX from a request.",
+        ".docx,.txt,.md",
+        False,
+        (
+            _f("request", "Request", "textarea", required=True),
+            _f("format", "Format", "select", options=("pdf", "docx", "pptx"), default="docx"),
+            _f("template_preset", "Template", "text", default=""),
+        ),
+    ),
     Tool("image_compress", "image", "Compress image", "Re-save an image as JPEG or WebP at a lower quality.", "image/*", False, (
         _f("quality", "Quality (40-95)", "number", default="70"),
         _f("format", "Format", "select", options=("jpeg", "webp"), default="jpeg"),
@@ -275,24 +312,6 @@ TOOLS: tuple[Tool, ...] = (
         _f("style", "Style", "select", options=("upper", "lower", "title", "snake", "kebab", "camel"), default="lower"),
         _f("text", "Text", "textarea", required=True),
     )),
-    Tool("summarize", "ai", "Summarize", "Summarize pasted text or an uploaded PDF, DOCX, or text file.", ".pdf,.docx,.txt,.md", False, (
-        _f("text", "Or paste text", "textarea", default=""),
-    )),
-    Tool("translate", "ai", "Translate", "Translate pasted text or an uploaded document.", ".pdf,.docx,.txt,.md", False, (
-        _f("source_language", "From language", "select", options=("auto", "en", "yue", "zh", "ta", "hi", "ml", "kn", "te"), default="auto"),
-        _f("language", "Target language", "select", options=("en", "yue", "zh", "ta", "hi", "ml", "kn", "te"), default="en"),
-        _f("text", "Or paste text", "textarea", default=""),
-    )),
-    Tool("rewrite", "ai", "Rewrite", "Rewrite pasted text or an uploaded document.", ".pdf,.docx,.txt,.md", False, (
-        _f("instruction", "Instruction", "text", default="Make this clearer and shorter."),
-        _f("text", "Or paste text", "textarea", default=""),
-    )),
-    Tool("generate_document", "ai", "Generate document", "Draft a PDF, DOCX, or PPTX from a request. Uses OpenRouter when a key is set.", ".docx,.txt,.md", False, (
-        _f("request", "Request", "textarea", required=True),
-        _f("format", "Format", "select", options=("pdf", "docx", "pptx"), default="docx"),
-        _f("template_preset", "Template", "text", default=""),
-    )),
-    Tool("classify", "ai", "Classify file", "Identify a file type and suggest the next tool.", "*", False),
 )
 
 BY_ID = {item.id: item for item in TOOLS}

@@ -71,3 +71,13 @@ TURNSTILE_HOSTNAMES = {
     if host.strip()
 }
 TURNSTILE_ACTION = os.getenv("TURNSTILE_ACTION", "contact").strip() or "contact"
+# Extra allowed Turnstile actions (comma-separated), e.g. contact,search
+TURNSTILE_ACTIONS = {
+    item.strip()
+    for item in os.getenv("TURNSTILE_ACTIONS", "contact,search,test").split(",")
+    if item.strip()
+}
+# Casual (anonymous) search abuse controls — Option B
+SEARCH_CASUAL_RATE_LIMIT = int(os.getenv("SEARCH_CASUAL_RATE_LIMIT", "30") or "30")
+SEARCH_CASUAL_RATE_WINDOW_SEC = int(os.getenv("SEARCH_CASUAL_RATE_WINDOW_SEC", "60") or "60")
+SEARCH_TURNSTILE_ACTION = os.getenv("SEARCH_TURNSTILE_ACTION", "search").strip() or "search"

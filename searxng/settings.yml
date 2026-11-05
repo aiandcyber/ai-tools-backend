@@ -1,6 +1,6 @@
 # Recommended SearXNG settings (shared service — not part of the API container).
 #
-# Deploy SearXNG separately (Docker/ECS). Mount or copy this file to the
+# Deploy SearXNG separately (e.g. Docker). Mount or copy this file to the
 # SearXNG config path, then point AI Tools at it with SEARXNG_URL.
 #
 # Docs: https://docs.searxng.org/admin/settings/

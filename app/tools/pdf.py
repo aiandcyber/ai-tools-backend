@@ -68,7 +68,7 @@ def create_pdf(dest: Path, title: str, body: str) -> Path:
 def word_to_pdf(src: Path, out_dir: Path) -> Path:
     soffice = shutil.which("soffice") or shutil.which("libreoffice")
     if not soffice:
-        raise RuntimeError("LibreOffice is not installed. The Fargate image includes it.")
+        raise RuntimeError("LibreOffice is not installed. The production Docker image includes it.")
     subprocess.run(
         [soffice, "--headless", "--convert-to", "pdf", "--outdir", str(out_dir), str(src)],
         check=True,

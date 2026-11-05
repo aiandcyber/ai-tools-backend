@@ -11,10 +11,11 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from app import config
 from app.agent import CHAT_DOWNLOADS, CHAT_FILES, build_orchestrator, resolve_llm_provider
-from app.auth import check_auth, tool_requires_auth
+from app.auth import bearer_token, check_auth, try_auth0_claims, tool_requires_auth
 from app.catalog import BY_ID, CATEGORIES, TOOLS
 from app.mail import send_feedback
-from app.turnstile import verify_turnstile
+from app.rate_limit import enforce_rate_limit
+from app.turnstile import client_ip, verify_turnstile
 from app.runner import export_text, run_tool
 from app import jobs, upload_security
 from app.workspace import publish, resolve_download
@@ -56,6 +57,12 @@ def health() -> dict:
         "status": "ok",
         "auth_required": config.AUTH_REQUIRED,
         "auth0_configured": bool(config.AUTH0_DOMAIN and config.AUTH0_AUDIENCE),
+        "search_gate": {
+            "casual_turnstile": bool(config.TURNSTILE_SECRET),
+            "casual_rate_limit": config.SEARCH_CASUAL_RATE_LIMIT,
+            "casual_rate_window_sec": config.SEARCH_CASUAL_RATE_WINDOW_SEC,
+            "app_auth0_bearer": bool(config.AUTH0_DOMAIN and config.AUTH0_AUDIENCE),
+        },
         "openrouter": bool(config.OPENROUTER_API_KEY),
         "gemini": bool(config.GEMINI_API_KEY),
         "llm_provider": provider,
@@ -240,6 +247,25 @@ def _search_api_post(path: str, body: dict):
     return response.json()
 
 
+def _gate_search_access(request: Request, body: dict) -> str:
+    """Option B: anonymous = Turnstile + rate limit. Option C: Auth0 Bearer (user or M2M)."""
+    if bearer_token(request):
+        try_auth0_claims(request)  # invalid Bearer must not fall through to casual
+        return "auth0"
+    enforce_rate_limit(
+        f"search:{client_ip(request)}",
+        limit=config.SEARCH_CASUAL_RATE_LIMIT,
+        window_sec=config.SEARCH_CASUAL_RATE_WINDOW_SEC,
+    )
+    token = str(
+        body.get("cf-turnstile-response")
+        or body.get("turnstile_token")
+        or ""
+    ).strip()
+    verify_turnstile(request, token, expected_action=config.SEARCH_TURNSTILE_ACTION)
+    return "casual"
+
+
 @app.post("/api/search")
 async def search_api(request: Request):
     """JSON search API for Tools UI and realtime-ai (news / recommendations / requests)."""
@@ -249,6 +275,7 @@ async def search_api(request: Request):
         raise HTTPException(status_code=400, detail="Expected JSON body") from exc
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="Expected JSON object")
+    _gate_search_access(request, body)
     if config.SEARCH_API_URL:
         return _search_api_post("/api/search", body)
     # Local fallback only. Production sets SEARCH_API_URL to the Search API.
@@ -280,6 +307,7 @@ async def search_people_reject(request: Request):
         raise HTTPException(status_code=400, detail="Expected JSON body") from exc
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="Expected JSON object")
+    _gate_search_access(request, body)
     if not config.SEARCH_API_URL:
         raise HTTPException(status_code=503, detail="Search API is not configured")
     return _search_api_post("/api/search/people/reject", body)
@@ -527,7 +555,7 @@ async def feedback(request: Request):
     ).strip()
     if not email or not message:
         raise HTTPException(status_code=400, detail="Email and message are required")
-    verify_turnstile(request, token)
+    verify_turnstile(request, token, expected_action="contact")
     try:
         await asyncio.to_thread(send_feedback, email, youtube_url, message, topic)
     except ValueError as exc:

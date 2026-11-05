@@ -59,7 +59,7 @@ VOICE_CHAINS = {
 
 def _ffmpeg(args: list[str]) -> None:
     if not shutil.which("ffmpeg"):
-        raise RuntimeError("ffmpeg is not installed. The Fargate image includes it.")
+        raise RuntimeError("ffmpeg is not installed. The production Docker image includes it.")
     subprocess.run(["ffmpeg", "-y", *args], check=True, capture_output=True, timeout=300)
 
 

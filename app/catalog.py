@@ -117,7 +117,7 @@ TOOLS: tuple[Tool, ...] = (
     )),
     Tool(
         "image_strip_exif",
-        "image",
+        "safety",
         "Remove Your Privacy",
         "Remove privacy information such as your GPS location and other metadata from your image.",
         "image/*",

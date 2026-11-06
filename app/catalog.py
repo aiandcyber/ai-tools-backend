@@ -112,6 +112,14 @@ TOOLS: tuple[Tool, ...] = (
     Tool("image_convert", "image", "Convert image", "Convert between JPEG, PNG, WebP, BMP, and GIF.", "image/*", False, (
         _f("format", "Format", "select", required=True, options=("jpeg", "png", "webp", "bmp", "gif"), default="png"),
     )),
+    Tool("qr_scan", "image", "Scan QR Code", "Read a QR code with the camera or from an image.", "image/*", False),
+    Tool("qr_generate", "image", "Create QR Code", "Create a QR code PNG.", "", False, (
+        _f("text", "QR code", "text", required=True),
+    )),
+    Tool("barcode_scan", "image", "Scan Barcode", "Read a barcode with the camera or from an image.", "image/*", False),
+    Tool("barcode_generate", "image", "Create Barcode", "Create a Code128 barcode PNG.", "", False, (
+        _f("text", "Barcode", "text", required=True),
+    )),
     Tool("image_watermark", "image", "Watermark image", "Draw text on an image.", "image/*", False, (
         _f("text", "Watermark", "text", required=True, default="DRAFT"),
     )),
@@ -296,22 +304,6 @@ TOOLS: tuple[Tool, ...] = (
             _f("industry", "Profile industry", "text", default=""),
         ),
     ),
-    Tool("qr_scan", "utility", "Scan QR Code", "Read a QR code with the camera or from an image.", "image/*", False),
-    Tool("qr_generate", "utility", "Create QR Code", "Create a QR code PNG.", "", False, (
-        _f("text", "QR code", "text", required=True),
-    )),
-    Tool("barcode_scan", "utility", "Scan Barcode", "Read a barcode with the camera or from an image.", "image/*", False),
-    Tool("barcode_generate", "utility", "Create Barcode", "Create a Code128 barcode PNG.", "", False, (
-        _f("text", "Barcode", "text", required=True),
-    )),
-    Tool("text_diff", "utility", "Text diff", "Compare two pieces of text.", "", False, (
-        _f("left", "Original", "textarea", required=True),
-        _f("right", "Changed", "textarea", required=True),
-    )),
-    Tool("case_convert", "utility", "Change case", "Convert text case.", "", False, (
-        _f("style", "Style", "select", options=("upper", "lower", "title", "snake", "kebab", "camel"), default="lower"),
-        _f("text", "Text", "textarea", required=True),
-    )),
 )
 
 BY_ID = {item.id: item for item in TOOLS}
@@ -319,9 +311,8 @@ BY_ID = {item.id: item for item in TOOLS}
 CATEGORIES = (
     ("search", "Search"),
     ("pdf", "Documents / PDF"),
-    ("image", "Images"),
+    ("image", "Images / QR"),
     ("media", "YouTube/Audio/Video"),
-    ("utility", "Utilities"),
     ("ai", "AI"),
     ("safety", "Scam & Virus Check"),
 )

@@ -633,8 +633,6 @@ _DISPATCH = {
     "qr_scan": _qr_scan,
     "barcode_generate": _barcode,
     "barcode_scan": _barcode_scan,
-    "text_diff": _diff,
-    "case_convert": _case,
     "web_search": _web_search,
     "summarize": _summarize,
     "translate": _translate,

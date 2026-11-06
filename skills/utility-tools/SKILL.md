@@ -1,15 +1,10 @@
 ---
 name: utility-tools
-description: Scan/create QR and barcodes, text diff, and change case.
+description: Legacy utility specialist. QR and barcode tools now live under image-tools.
 ---
 
 # Utility tools
 
-Use `run_utility_tool` with the matching `tool_id`. Keep options_json minimal and valid.
+QR and barcode tools moved to `image-tools`. Text diff and change case were removed from the website catalog.
 
-## Tool ids
-
-- `qr_scan` / `qr_generate` — Scan QR Code / Create QR Code
-- `barcode_scan` / `barcode_generate` — Scan Barcode / Create Barcode
-- `text_diff` — compare two texts
-- `case_convert` — change text case
+If a request is for QR or barcode scan/create, route to `image_specialist` / `image-tools`.

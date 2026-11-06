@@ -20,7 +20,6 @@ CATEGORY_SKILL = {
     "pdf": "pdf-tools",
     "image": "image-tools",
     "media": "media-tools",
-    "utility": "utility-tools",
     "ai": "ai-tools",
 }
 

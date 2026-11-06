@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
 from app import config
 from app.agent import CHAT_DOWNLOADS, CHAT_FILES, build_orchestrator, resolve_llm_provider
@@ -635,12 +635,65 @@ async def tts(request: Request):
     return FileResponse(dest, media_type="audio/mpeg", filename="speech.mp3")
 
 
+_DOWNLOAD_GONE_MSG = (
+    "That file is no longer available. Please go back and run the tool again to create a new download."
+)
+_TOOLS_HOME = "https://tools.ai-forall.org/"
+
+
+def _download_gone_html() -> str:
+    # Generic page only — never echo token, path, or exception text.
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Download unavailable</title>
+  <style>
+    body {{ font-family: system-ui, sans-serif; margin: 0; background: #f8fafc; color: #0f172a; }}
+    main {{ max-width: 32rem; margin: 4rem auto; padding: 1.5rem; background: #fff;
+      border: 1px solid #e2e8f0; border-radius: 1rem; box-shadow: 0 8px 24px rgba(15,23,42,.06); }}
+    h1 {{ font-size: 1.25rem; margin: 0 0 .75rem; }}
+    p {{ margin: 0 0 1rem; line-height: 1.5; color: #475569; }}
+    .actions {{ display: flex; flex-wrap: wrap; gap: .5rem; }}
+    button, a.btn {{ appearance: none; border: 0; border-radius: 999px; padding: .65rem 1rem;
+      font-weight: 650; cursor: pointer; text-decoration: none; display: inline-flex; }}
+    button {{ background: #0f766e; color: #fff; }}
+    a.btn {{ background: #ecfdf5; color: #0f766e; }}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Download unavailable</h1>
+    <p>{_DOWNLOAD_GONE_MSG}</p>
+    <div class="actions">
+      <button type="button" id="back">Go back</button>
+      <a class="btn" href="{_TOOLS_HOME}">Open Tools</a>
+    </div>
+  </main>
+  <script>
+    document.getElementById('back').addEventListener('click', function () {{
+      if (window.history.length > 1) window.history.back();
+      else window.location.href = {_TOOLS_HOME!r};
+    }});
+  </script>
+</body>
+</html>
+"""
+
+
 @app.get("/api/files/{token}/{name}")
-def download(token: str, name: str):
+def download(token: str, name: str, request: Request):
     try:
         path = resolve_download(token, name)
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="File not found") from None
+        accept = (request.headers.get("accept") or "").lower()
+        fetch_mode = (request.headers.get("sec-fetch-mode") or "").lower()
+        # Browser navigation / opened tab — never show raw API JSON.
+        wants_html = fetch_mode == "navigate" or accept.startswith("text/html")
+        if wants_html:
+            return HTMLResponse(_download_gone_html(), status_code=404)
+        raise HTTPException(status_code=404, detail=_DOWNLOAD_GONE_MSG) from None
     return FileResponse(path, filename=path.name)
 
 

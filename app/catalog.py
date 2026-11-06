@@ -39,30 +39,6 @@ def _f(name: str, label: str, kind: str, **kwargs) -> Field:
 
 
 TOOLS: tuple[Tool, ...] = (
-    Tool(
-        "summarize",
-        "pdf",
-        "Summarize Text",
-        "Summarize pasted text or an uploaded PDF, DOCX, or text file.",
-        ".pdf,.docx,.txt,.md",
-        False,
-        (
-            _f("text", "Or paste text", "textarea", default=""),
-        ),
-    ),
-    Tool(
-        "translate",
-        "pdf",
-        "Translate Text",
-        "Translate pasted text or an uploaded document.",
-        ".pdf,.docx,.txt,.md",
-        False,
-        (
-            _f("source_language", "From language", "select", options=("auto", "en", "yue", "zh", "ta", "hi", "ml", "kn", "te"), default="auto"),
-            _f("language", "Target language", "select", options=("en", "yue", "zh", "ta", "hi", "ml", "kn", "te"), default="en"),
-            _f("text", "Or paste text", "textarea", default=""),
-        ),
-    ),
     Tool("pdf_merge", "pdf", "Combine PDFs", "Merge two or more PDF files into one, in the order uploaded.", ".pdf", True),
     Tool("pdf_compress", "pdf", "Compress PDF", "Reduce PDF file size. Output stays a PDF.", ".pdf", False),
     Tool("pdf_unlock", "pdf", "Unlock PDF", "Remove a PDF password.", ".pdf", False, (

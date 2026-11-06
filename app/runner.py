@@ -438,9 +438,8 @@ def _qr(files, options, work):
 
 
 def _qr_scan(files, options, work):
-    dest = work / "qr.txt"
-    dest.write_text(utility.scan_qr(_one(files)), encoding="utf-8")
-    return Outcome("Read QR code", [dest])
+    text = utility.scan_qr(_one(files))
+    return Outcome("Read QR code", meta={"text": text})
 
 
 def _barcode(files, options, work):
@@ -448,9 +447,8 @@ def _barcode(files, options, work):
 
 
 def _barcode_scan(files, options, work):
-    dest = work / "barcode.txt"
-    dest.write_text(utility.scan_barcode(_one(files)), encoding="utf-8")
-    return Outcome("Read barcode", [dest])
+    text = utility.scan_barcode(_one(files))
+    return Outcome("Read barcode", meta={"text": text})
 
 
 def _hash(files, options, work):
